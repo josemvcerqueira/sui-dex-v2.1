@@ -166,8 +166,8 @@ module ipx::dex_stable {
             lp_coin_supply: supply,
             balance_x: coin::into_balance<X>(coin_x),
             balance_y: coin::into_balance<Y>(coin_y),
-            decimals_x: (coin::get_decimals(coin_x_metadata) as u64),
-            decimals_y: (coin::get_decimals(coin_y_metadata) as u64),
+            decimals_x: math::pow(10, coin::get_decimals(coin_x_metadata)),
+            decimals_y: math::pow(10, coin::get_decimals(coin_y_metadata)),
             }
         );
 
