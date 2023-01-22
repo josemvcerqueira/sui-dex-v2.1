@@ -557,6 +557,9 @@ module ipx::interface {
     coin_x: &Coin<X>,
     coin_y: &Coin<Y>
   ): bool {
+
+    if (!stable::is_pool_deployed<X, Y>(s_storage)) return true;
+
     let v_pool = volatile::borrow_pool<X, Y>(v_storage);
     let s_pool = stable::borrow_pool<X, Y>(s_storage);
 
