@@ -14,6 +14,7 @@ module ipx::utils {
     const ERROR_INSUFFICIENT_AMOUNT: u64 = 2;
     const ERROR_INSUFFICIENT_OUTPOT_AMOUNT: u64 = 3;
     const ERROR_SAME_COIN: u64 = 4;
+    const ERROR_UNSORTED_COINS: u64 = 5;
 
     public fun get_smaller_enum(): u8 {
         SMALLER
@@ -51,6 +52,8 @@ module ipx::utils {
     }
 
     public fun get_lp_coin_name<X, Y>(): String {
+      assert!(are_coins_sorted<X, Y>(), ERROR_UNSORTED_COINS);
+      
       let lp_name = string::utf8(b"");
 
       string::append_utf8(&mut lp_name, ascii::into_bytes(type_name::into_string(type_name::get<X>())));
