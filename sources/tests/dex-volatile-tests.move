@@ -1,5 +1,5 @@
 #[test_only]
-module ipx::dex_tests {
+module ipx::dex_volatile_tests {
 
     use sui::coin::{Self, mint_for_testing as mint, destroy_for_testing as burn};
     use sui::test_scenario::{Self as test, Scenario, next_tx, ctx};
@@ -61,6 +61,80 @@ module ipx::dex_tests {
         test::end(scenario);
     }
 
+    fun test_swap_token_x_(test: &mut Scenario) {
+       test_create_pool_(test);
+
+       let (_, bob) = people();
+
+       next_tx(test, bob);
+       {
+        let storage = test::take_shared<Storage>(test);
+
+        let ether_amount = INITIAL_ETHER_VALUE / 10;
+
+        let pool = dex::borrow_pool<Ether, USDC>(&storage);
+        let (ether_reserves, usdc_reserves, _) = dex::get_amounts(pool);
+
+        let token_in_amount = ether_amount - ((ether_amount * 300) / 100000);
+        let usdc_amount_received = (usdc_reserves * token_in_amount) / (token_in_amount + ether_reserves);
+
+        let usdc = dex::swap_token_x<Ether, USDC>(
+          &mut storage,
+          mint<Ether>(ether_amount, ctx(test)),
+          0,
+          ctx(test)
+        );
+
+        assert!(burn(usdc) == usdc_amount_received, 0);
+
+        test::return_shared(storage);
+       };
+    }
+
+    #[test]
+    fun test_swap_token_x() {
+        let scenario = scenario();
+        test_swap_token_x_(&mut scenario);
+        test::end(scenario);
+    }
+
+    fun test_swap_token_y_(test: &mut Scenario) {
+       test_create_pool_(test);
+
+       let (_, bob) = people();
+
+       next_tx(test, bob);
+       {
+        let storage = test::take_shared<Storage>(test);
+
+        let usdc_amount = INITIAL_USDC_VALUE / 10;
+
+        let pool = dex::borrow_pool<Ether, USDC>(&storage);
+        let (ether_reserves, usdc_reserves, _) = dex::get_amounts(pool);
+
+        let token_in_amount = usdc_amount - ((usdc_amount * 300) / 100000);
+        let ether_amount_received = (ether_reserves * token_in_amount) / (token_in_amount + usdc_reserves);
+
+        let ether = dex::swap_token_y<Ether, USDC>(
+          &mut storage,
+          mint<USDC>(usdc_amount, ctx(test)),
+          0,
+          ctx(test)
+        );
+
+        assert!(burn(ether) == ether_amount_received, 0);
+
+        test::return_shared(storage);
+       };
+    }
+
+    #[test]
+    fun test_swap_token_y() {
+        let scenario = scenario();
+        test_swap_token_y_(&mut scenario);
+        test::end(scenario);
+    }
+
     fun test_add_liquidity_(test: &mut Scenario) {
         test_create_pool_(test);
         remove_fee(test);
@@ -80,6 +154,7 @@ module ipx::dex_tests {
           &mut storage,
           mint<Ether>(ether_value, ctx(test)),
           mint<USDC>(usdc_value, ctx(test)),
+          0,
           ctx(test)
           );
 
@@ -119,6 +194,7 @@ module ipx::dex_tests {
             &mut storage,
             mint<Ether>(ether_value, ctx(test)),
             mint<USDC>(usdc_value, ctx(test)),
+            0,
             ctx(test)
           );
 
@@ -130,6 +206,8 @@ module ipx::dex_tests {
           let (ether, usdc) = dex::remove_liquidity(
               &mut storage,
               lp_coin,
+              0,
+              0,
               ctx(test)
           );
 
@@ -199,6 +277,7 @@ module ipx::dex_tests {
           &mut storage,
           mint<Ether>(ether_value, ctx(test)),
           mint<USDC>(usdc_value, ctx(test)),
+          0,
           ctx(test)
         );
 
@@ -260,6 +339,8 @@ module ipx::dex_tests {
         let (ether, usdc) = dex::remove_liquidity(
           &mut storage,
           mint<VLPCoin<Ether, USDC>>(30000, ctx(test)),
+          0,
+          0,
           ctx(test)
         );
 

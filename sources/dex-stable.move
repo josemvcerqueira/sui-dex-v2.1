@@ -23,7 +23,7 @@ module ipx::dex_stable {
     };
   const MINIMUM_LIQUIDITY: u64 = 10;
   const PRECISION: u64 = 100000;
-  const FEE_PERCENT: u64 = 300;
+  const FEE_PERCENT: u64 = 50; // 0.05%
   const K_PRECISION: u64 = 1000000000; //1e9
 
   const ERROR_CREATE_PAIR_ZERO_VALUE: u64 = 1;
@@ -466,9 +466,7 @@ module ipx::dex_stable {
                     return y
                 }
             }
-
       };
-
       y
     }
 

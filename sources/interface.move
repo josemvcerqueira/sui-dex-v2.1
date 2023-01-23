@@ -25,15 +25,27 @@ module ipx::interface {
     pay::join_vec(&mut coin_x, vector_x);
     pay::join_vec(&mut coin_y, vector_y);
 
-    transfer::transfer(
-      volatile::create_pool(
-        storage,
-        coin_x,
-        coin_y,
-        ctx
-      ),
-      tx_context::sender(ctx)
-    )
+    if (utils::are_coins_sorted<X, Y>()) {
+      transfer::transfer(
+        volatile::create_pool(
+          storage,
+          coin_x,
+          coin_y,
+          ctx
+        ),
+        tx_context::sender(ctx)
+      )
+    } else {
+      transfer::transfer(
+        volatile::create_pool(
+          storage,
+          coin_y,
+          coin_x,
+          ctx
+        ),
+        tx_context::sender(ctx)
+      )
+    }
   }
 
   entry public fun swap<X, Y>(
@@ -47,7 +59,8 @@ module ipx::interface {
   ) {
     let (coin_x, coin_y) = handle_swap_vectors(vector_x, vector_y, coin_in_value, ctx);
 
-    let (coin_x, coin_y) = swap_(
+  if (utils::are_coins_sorted<X, Y>()) {
+   let (coin_x, coin_y) = swap_<X, Y>(
       v_storage,
       s_storage,
       coin_x,
@@ -58,6 +71,19 @@ module ipx::interface {
 
     safe_transfer(coin_x, ctx);
     safe_transfer(coin_y, ctx);
+    } else {
+    let (coin_y, coin_x) = swap_<Y, X>(
+      v_storage,
+      s_storage,
+      coin_y,
+      coin_x,
+      coin_out_min_value,
+      ctx
+    );
+    
+    safe_transfer(coin_x, ctx);
+    safe_transfer(coin_y, ctx);
+    }
   }
 
   entry public fun one_hop_swap<X, Y, Z>(
@@ -201,6 +227,7 @@ module ipx::interface {
     vector_x: vector<Coin<X>>,
     vector_y: vector<Coin<Y>>,
     is_volatile: bool,
+    vlp_coin_min_amount: u64,
     ctx: &mut TxContext
   ) {
     assert!(utils::are_coins_sorted<X, Y>(), ERROR_UNSORTED_COINS);
@@ -235,6 +262,7 @@ module ipx::interface {
         v_storage,
         coin_x,
         coin_y,
+        vlp_coin_min_amount,
         ctx
       ),
       tx_context::sender(ctx)
@@ -256,6 +284,8 @@ module ipx::interface {
     storage: &mut VStorage,
     vector_lp_coin: vector<Coin<VLPCoin<X, Y>>>,
     coin_amount_in: u64,
+    coin_x_min_amount: u64,
+    coin_y_min_amount: u64,
     ctx: &mut TxContext
   ){
     let coin = coin::zero<VLPCoin<X, Y>>(ctx);
@@ -271,6 +301,8 @@ module ipx::interface {
     let (coin_x, coin_y) = volatile::remove_liquidity(
       storage,
       coin, 
+      coin_x_min_amount,
+      coin_y_min_amount,
       ctx
     );
 
