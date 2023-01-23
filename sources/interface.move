@@ -273,6 +273,7 @@ module ipx::interface {
         s_storage,
         coin_x,
         coin_y,
+        0,
         ctx
       ),
       tx_context::sender(ctx)
@@ -329,6 +330,8 @@ module ipx::interface {
     let (coin_x, coin_y) = stable::remove_liquidity(
       storage,
       coin, 
+      0,
+      0,
       ctx
     );
 

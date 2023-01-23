@@ -350,7 +350,7 @@ module ipx::dex_volatile {
         let (coin_x_reserve, coin_y_reserve, lp_coin_supply) = get_amounts(pool);
 
         // Calculate the amount of coins to receive in proportion of the `lp_coin_value`. 
-        // It maintains the K = x * y of the Pool<X, Y>
+        // It maintains the current K of the pool.
         let coin_x_removed = (lp_coin_value * coin_x_reserve) / lp_coin_supply;
         let coin_y_removed = (lp_coin_value * coin_y_reserve) / lp_coin_supply;
         
@@ -520,7 +520,7 @@ module ipx::dex_volatile {
         // Borrow a mutable Pool<X, Y>.
         let pool = borrow_mut_pool<X, Y>(storage);
 
-        // Conver the coin being sold in balance.
+        // Convert the coin being sold in balance.
         let coin_y_balance = coin::into_balance(coin_y);
 
         // Save the reserves of Pool<X, Y> locally.

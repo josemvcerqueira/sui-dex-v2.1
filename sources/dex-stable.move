@@ -14,8 +14,6 @@ module ipx::dex_stable {
   use ipx::utils;
   use ipx::u256;
 
-  friend ipx::interface;
-
   const DEV: address = @dev;
   const ZERO_ACCOUNT: address = @zero;
   const MAX_POOL_COIN_AMOUNT: u64 = {
@@ -30,10 +28,12 @@ module ipx::dex_stable {
   const ERROR_POOL_IS_FULL: u64 = 2;
   const ERROR_POOL_EXISTS: u64 = 3;
   const ERROR_ZERO_VALUE_SWAP: u64 = 4;
-  const ERROR_EMPTY_POOL: u64 = 5;
+  const ERROR_NOT_ENOUGH_LIQUIDITY: u64 = 5;
   const ERROR_SLIPPAGE: u64 = 6;
   const ERROR_ADD_LIQUIDITY_ZERO_AMOUNT: u64 = 7;
   const ERROR_REMOVE_LIQUIDITY_ZERO_AMOUNT: u64 = 8;
+  const ERROR_REMOVE_LIQUIDITY_X_AMOUNT: u64 = 9;
+  const ERROR_REMOVE_LIQUIDITY_Y_AMOUNT: u64 = 10;
 
     struct AdminCap has key {
       id: UID,
@@ -94,8 +94,12 @@ module ipx::dex_stable {
       coin_x_out: u64,
       coin_y_out: u64,
       shares_destroyed: u64
-    }
+    } 
 
+    /**
+    * @dev It gives the caller the AdminCap object. The AdminCap allows the holder to update the fee_to key. 
+    * It shares the Storage object with the Sui Network.
+    */
     fun init(ctx: &mut TxContext) {
       // Give administrator capabilities to the deployer
       // He has the ability to update the fee_to key on the Storage
@@ -116,6 +120,20 @@ module ipx::dex_stable {
       );
     }
 
+    /**
+    * @notice The zero address receives a small amount of shares to prevent zero divisions in the future. 
+    * @notice Please make sure that the tokens X and Y are sorted before calling this fn.
+    * @dev It creates a new Pool with X and Y coins. The pool accepts swaps using the x3y+y3x >= k invariant.
+    * @param storage the object that stores the pools Bag
+    * @oaram coin_x the first token of the pool
+    * @param coin_y the scond token of the pool
+    * @return The number of shares as VLPCoins that can be used later on to redeem his coins + commissions.
+    * Requirements: 
+    * - It will throw if the X and Y are not sorted.
+    * - Both coins must have a value greater than 0. 
+    * - The pool has a maximum capacity to prevent overflows.
+    * - There can only be one pool per each token pair, regardless of their order.
+    */
     public fun create_pool<X, Y>(
       _: &AdminCap,
       storage: &mut Storage,
@@ -125,29 +143,44 @@ module ipx::dex_stable {
       coin_y_metadata: &CoinMetadata<Y>,
       ctx: &mut TxContext
     ): Coin<SLPCoin<X, Y>> {
-      // Sort the coins and get their values
+      // Store the value of the coins locally
       let coin_x_value = coin::value(&coin_x);
       let coin_y_value = coin::value(&coin_y);
 
+      // Ensure that the both coins have a value greater than 0.
       assert!(coin_x_value != 0 && coin_y_value != 0, ERROR_CREATE_PAIR_ZERO_VALUE);    
+      // Make sure the value does not exceed the maximum amount to prevent overflows.    
       assert!(MAX_POOL_COIN_AMOUNT > coin_x_value && MAX_POOL_COIN_AMOUNT > coin_y_value, ERROR_POOL_IS_FULL);
 
+      // Construct the name of the VLPCoin, which will be used as a key to store the pool data.
+      // This fn will throw if X and Y are not sorted.
       let lp_coin_name = utils::get_lp_coin_name<X, Y>();
 
+      // Checks that the pool does not exist.
       assert!(!bag::contains(&storage.pools, lp_coin_name), ERROR_POOL_EXISTS);
 
-        let k = coin_x_value * coin_y_value;
-        let shares = math::sqrt(k);
+      // Calculate the scalar of the decimals.
+      let decimals_x = math::pow(10, coin::get_decimals(coin_x_metadata));
+      let decimals_y = math::pow(10, coin::get_decimals(coin_y_metadata));
 
-        let supply = balance::create_supply(SLPCoin<X, Y> {});
-        let min_liquidity_balance = balance::increase_supply(&mut supply, MINIMUM_LIQUIDITY);
-        let sender_balance = balance::increase_supply(&mut supply, shares);
+      // Calculate k = x3y+y3x
+      let k = k(coin_x_value, coin_y_value, decimals_x, decimals_y);
+      // Calculate the number of shares
+      let shares = math::sqrt(k);
 
-        transfer::transfer(coin::from_balance(min_liquidity_balance, ctx), ZERO_ACCOUNT);
+      // Create the SLP coin for the Pool<X, Y>. 
+      // This coin has 0 decimals and no metadata 
+      let supply = balance::create_supply(SLPCoin<X, Y> {});
+      let min_liquidity_balance = balance::increase_supply(&mut supply, MINIMUM_LIQUIDITY);
+      let sender_balance = balance::increase_supply(&mut supply, shares);
 
-        let pool_id = object::new(ctx);
+      // Transfer the zero address shares
+      transfer::transfer(coin::from_balance(min_liquidity_balance, ctx), ZERO_ACCOUNT);
 
-        event::emit(
+      // Calculate an id for the pool and the event
+      let pool_id = object::new(ctx);
+
+      event::emit(
           PoolCreated<SPool<X, Y>> {
             id: object::uid_to_inner(&pool_id),
             shares,
@@ -157,23 +190,39 @@ module ipx::dex_stable {
           }
         );
 
-        bag::add(
-          &mut storage.pools,
-          lp_coin_name,
-          SPool {
-            id: pool_id,
-            k_last: k,
-            lp_coin_supply: supply,
-            balance_x: coin::into_balance<X>(coin_x),
-            balance_y: coin::into_balance<Y>(coin_y),
-            decimals_x: math::pow(10, coin::get_decimals(coin_x_metadata)),
-            decimals_y: math::pow(10, coin::get_decimals(coin_y_metadata)),
-            }
+      // Store the new pool in Storage.pools
+      bag::add(
+        &mut storage.pools,
+        lp_coin_name,
+        SPool {
+          id: pool_id,
+          k_last: k,
+          lp_coin_supply: supply,
+          balance_x: coin::into_balance<X>(coin_x),
+          balance_y: coin::into_balance<Y>(coin_y),
+          decimals_x: math::pow(10, coin::get_decimals(coin_x_metadata)),
+          decimals_y: math::pow(10, coin::get_decimals(coin_y_metadata)),
+          }
         );
 
-        coin::from_balance(sender_balance, ctx)
+      // Return the caller shares
+      coin::from_balance(sender_balance, ctx)
     }
 
+    /**
+    * @dev This fn performs a swap between X and Y coins on a Pool<X, Y>. 
+    * Only one of the coins must have a value of 0 or the fn will throw. 
+    * It is a helper fn build on top of `swap_token_x` and `swap_token_y`. To save gas a caller can call the underlying fns.
+    * If X is 0, the fn will swap Y -> X and vice versa.
+    * @param storage the object that stores the pools Bag
+    * @oaram coin_x If this coin has a value greater than 0, it will be swapped for Y
+    * @param coin_y If this coin has a value greater than 0, it will be swapped for X
+    * @param coin_out_min_value The minimum value the caller wishes to receive after the swap.
+    * @return A tuple of both coins. One of the coins will be zero, the one that the caller intended to sell, and the other will have a value.
+    * Requirements: 
+    * - Coins X and Y must be sorted.
+    * - One of the coins must have a value of 0 and the other a value greater than 0 
+    */
     public fun swap<X, Y>(
       storage: &mut Storage,
       coin_x: Coin<X>,
@@ -183,48 +232,79 @@ module ipx::dex_stable {
       ): (Coin<X>, Coin<Y>) {
        let is_coin_x_value_zero = coin::value(&coin_x) == 0;
 
+        // Make sure one of the coins has a value of 0 and the other does not.
         assert!(!is_coin_x_value_zero || coin::value(&coin_y) != 0, ERROR_ZERO_VALUE_SWAP);
 
+        // If Coin<X> has a value of 0, we will swap Y -> X
         if (is_coin_x_value_zero) {
           coin::destroy_zero(coin_x);
           let coin_x = swap_token_y(storage, coin_y, coin_out_min_value, ctx);
            (coin_x, coin::zero<Y>(ctx)) 
         } else {
+          // If Coin<Y> has a value of 0, we will swap X -> Y
           coin::destroy_zero(coin_y);
           let coin_y = swap_token_x(storage, coin_x, coin_out_min_value, ctx);
           (coin::zero<X>(ctx), coin_y) 
         }
       }
 
+    /**
+    * @dev This fn allows the caller to deposit coins X and Y on the Pool<X, Y>.
+    * This function will not throw if one of the coins has a value of 0, but the caller will get shares (SLPCoin) with a value of 0.
+    * @param storage the object that stores the pools Bag 
+    * @param coin_x The Coin<X> the user wishes to deposit on Pool<X, Y>
+    * @param coin_y The Coin<Y> the user wishes to deposit on Pool<X, Y>
+    * @param vlp_coin_min_amount the minimum amount of shares to receive. It prevents high slippage from frontrunning. 
+    * @return VLPCoin with a value in proportion to the Coin deposited and the reserves of the Pool<X, Y>.
+    * Requirements: 
+    * - Coins X and Y must be sorted.
+    */
     public fun add_liquidity<X, Y>(   
       storage: &mut Storage,
       coin_x: Coin<X>,
       coin_y: Coin<Y>,
+      slp_coin_min_amount: u64,
       ctx: &mut TxContext
       ): Coin<SLPCoin<X, Y>> {
+        // Save the value of the coins locally.
         let coin_x_value = coin::value(&coin_x);
         let coin_y_value = coin::value(&coin_y);
         
+        // Save the fee_to address because storage will be moved to `borrow_mut_pool`
         let fee_to = storage.fee_to;
+        // Borrow the Pool<X, Y>. It is mutable.
+        // It will throw if X and Y are not sorted.
         let pool = borrow_mut_pool<X, Y>(storage);
 
+        // Mint the fee amount if `fee_to` is not the @0x0. 
+        // The fee amount is equivalent to 1/5 of all commissions collected. 
+        // If the fee is on, we need to save the K in the k_last key to calculate the next fee amount. 
         let is_fee_on = mint_fee(pool, fee_to, ctx);
 
+        // Make sure that both coins havea value greater than 0 to save gas for the user.
         assert!(coin_x_value != 0 && coin_x_value != 0, ERROR_ADD_LIQUIDITY_ZERO_AMOUNT);
 
+        // Save the reserves and supply amount of Pool<X, Y> locally.
         let (coin_x_reserve, coin_y_reserve, supply) = get_amounts(pool);
 
+        // Calculate the number of shares to mint. Note if of the coins has a value of 0. The `shares_to_mint` will be 0.
         let share_to_mint = math::min(
           (coin_x_value * supply) / coin_x_reserve,
           (coin_y_value * supply) / coin_y_reserve
         );
 
+        // Make sure the user receives the minimum amount desired or higher.
+        assert!(share_to_mint >= slp_coin_min_amount, ERROR_SLIPPAGE);
+
+        // Deposit the coins in the Pool<X, Y>.
         let new_reserve_x = balance::join(&mut pool.balance_x, coin::into_balance(coin_x));
         let new_reserve_y = balance::join(&mut pool.balance_y, coin::into_balance(coin_y));
 
+        // Make sure that the pool is not full.
         assert!(MAX_POOL_COIN_AMOUNT >= new_reserve_x, ERROR_POOL_IS_FULL);
         assert!(MAX_POOL_COIN_AMOUNT >= new_reserve_y, ERROR_POOL_IS_FULL);
 
+        // Emit the AddLiquidity event
         event::emit(
           AddLiquidity<SPool<X, Y>> {
           id: object:: uid_to_inner(&pool.id), 
@@ -235,32 +315,63 @@ module ipx::dex_stable {
           }
         );
 
-        if (is_fee_on) pool.k_last = new_reserve_x * new_reserve_y;
+        // If the fee mechanism is turned on, we need to save the K for the next calculation.
+        if (is_fee_on) pool.k_last = k(new_reserve_x, new_reserve_y, pool.decimals_x, pool.decimals_y);
 
+        // Return the shares(VLPCoin) to the caller.
         coin::from_balance(balance::increase_supply(&mut pool.lp_coin_supply, share_to_mint), ctx)
       }
 
+    /**
+    * @dev It allows the caller to redeem his underlying coins in proportions to the SLPCoins he burns. 
+    * @param storage the object that stores the pools Bag 
+    * @param lp_coin the shares to burn
+    * @param coin_x_min_amount the minimum value of Coin<X> the caller wishes to receive.
+    * @param coin_y_min_amount the minimum value of Coin<Y> the caller wishes to receive.
+    * @return A tuple with Coin<X> and Coin<Y>.
+    * Requirements: 
+    * - Coins X and Y must be sorted.
+    */
     public fun remove_liquidity<X, Y>(   
       storage: &mut Storage,
       lp_coin: Coin<SLPCoin<X, Y>>,
+      coin_x_min_amount: u64,
+      coin_y_min_amount: u64,
       ctx: &mut TxContext
       ): (Coin<X>, Coin<Y>) {
+        // Store the value of the shares locally
         let lp_coin_value = coin::value(&lp_coin);
 
+        // Throw if the lp_coin has a value of 0 to save gas.
         assert!(lp_coin_value != 0, ERROR_REMOVE_LIQUIDITY_ZERO_AMOUNT);
 
+        // Save the fee_to address because storage will be moved to `borrow_mut_pool`
         let fee_to = storage.fee_to;
+        // Borrow the Pool<X, Y>. It is mutable.
+        // It will throw if X and Y are not sorted.
         let pool = borrow_mut_pool<X, Y>(storage);
 
+        // Mint the fee amount if `fee_to` is not the @0x0. 
+        // The fee amount is equivalent to 1/5 of all commissions collected. 
+        // If the fee is on, we need to save the K in the k_last key to calculate the next fee amount. 
         let is_fee_on = mint_fee(pool, fee_to, ctx);
 
+        // Save the reserves and supply amount of Pool<X, Y> locally.
         let (coin_x_reserve, coin_y_reserve, lp_coin_supply) = get_amounts(pool);
 
+        // Calculate the amount of coins to receive in proportion of the `lp_coin_value`. 
+        // It maintains the K = x * y of the Pool<X, Y>
         let coin_x_removed = (lp_coin_value * coin_x_reserve) / lp_coin_supply;
         let coin_y_removed = (lp_coin_value * coin_y_reserve) / lp_coin_supply;
+        
+        // Make sure that the caller receives the minimum amount desired.
+        assert!(coin_x_removed >= coin_x_min_amount, ERROR_REMOVE_LIQUIDITY_X_AMOUNT);
+        assert!(coin_y_removed >= coin_y_min_amount, ERROR_REMOVE_LIQUIDITY_Y_AMOUNT);
 
+        // Burn the VLPCoin deposited
         balance::decrease_supply(&mut pool.lp_coin_supply, coin::into_balance(lp_coin));
 
+        // Emit the RemoveLiquidity event
         event::emit(
           RemoveLiquidity<SPool<X, Y>> {
           id: object:: uid_to_inner(&pool.id), 
@@ -271,22 +382,43 @@ module ipx::dex_stable {
           }
         );
 
-        if (is_fee_on) pool.k_last = (coin_x_reserve - coin_x_removed) * (coin_y_reserve - coin_y_removed);
+        // Store the current K for the next fee calculation.
+        if (is_fee_on) pool.k_last = k((coin_x_reserve - coin_x_removed), (coin_y_reserve - coin_y_removed), pool.decimals_x, pool.decimals_y);
 
+        // Remove the coins from the Pool<X, Y> and return to the caller.
         (
           coin::take(&mut pool.balance_x, coin_x_removed, ctx),
           coin::take(&mut pool.balance_y, coin_y_removed, ctx),
         )
       }
 
+
+    /**
+    * @dev It returns an immutable Pool<X, Y>. 
+    * @param storage the object that stores the pools Bag 
+    * @return The pool for Coins X and Y.
+    * Requirements: 
+    * - Coins X and Y must be sorted.
+    */
     public fun borrow_pool<X, Y>(storage: &Storage): &SPool<X, Y> {
       bag::borrow<String, SPool<X, Y>>(&storage.pools, utils::get_lp_coin_name<X, Y>())
     }
 
+    /**
+    * @dev It indicates to the caller if Pool<X, Y> has been deployed. 
+    * @param storage the object that stores the pools Bag 
+    * @return bool True if the pool has been deployed.
+    * Requirements: 
+    * - Coins X and Y must be sorted.
+    */
     public fun is_pool_deployed<X, Y>(storage: &Storage):bool {
       bag::contains(&storage.pools, utils::get_lp_coin_name<X, Y>())
     }
 
+    /**
+    * @param pool an immutable Pool<X, Y>
+    * @return It returns a triple of Tuple<coin_x_reserves, coin_y_reserves, lp_coin_supply>. 
+    */
     public fun get_amounts<X, Y>(pool: &SPool<X, Y>): (u64, u64, u64) {
         (
             balance::value(&pool.balance_x),
@@ -295,6 +427,15 @@ module ipx::dex_stable {
         )
     }
 
+    /**
+    * @dev A helper fn to calculate the value of tokenA in tokenB in a Pool<A, B>. This function remove the commission of 0.05% from the `coin_in_amount`.
+    * Algo logic taken from Andre Cronje's Solidly
+    * @param coin_amount the amount being sold
+    * @param balance_x the reserves of the Coin<X> in a Pool<A, B>. 
+    * @param balance_y The reserves of the Coin<Y> in a Pool<A, B>. 
+    * @param is_x it indicates if the `coin_amount` is Coin<X> or Coin<Y>.
+    * @return the value of A in terms of B.
+    */
   public fun calculate_value_out<X, Y>(
       pool: &SPool<X, Y>,
       coin_amount: u64,
@@ -302,15 +443,20 @@ module ipx::dex_stable {
       balance_y:u64,
       is_x: bool
     ): u64 {
+        // Precision is used to scale the number for more precise calculations. 
+        // We convert them to u256 for more precise calculations and to avoid overflows.
         let precision_u256 = u256::from_u64(PRECISION);
         let token_in_u256 = u256::from_u64(coin_amount);
 
+        // We calculate the amount being sold after the fee. 
         let token_in_amount_minus_fees_adjusted = u256::as_u64(u256::sub(token_in_u256, 
         u256::div(
           u256::mul(token_in_u256, u256::from_u64(FEE_PERCENT)),
           precision_u256)
         ));
 
+        // Calculate the stable curve invariant k = x3y+y3x 
+        // We need to consider stable coins with different decimal values
         let reserve_x = (balance_x * K_PRECISION) / pool.decimals_x; 
         let reserve_y = (balance_y * K_PRECISION) / pool.decimals_y;
 
@@ -320,34 +466,51 @@ module ipx::dex_stable {
           { (token_in_amount_minus_fees_adjusted * K_PRECISION) / pool.decimals_y };
 
         let y = if (is_x) 
-          { balance_y - y(amount_in + reserve_x, k(pool, balance_x, balance_y), reserve_y) } 
+          { balance_y - y(amount_in + reserve_x, k(reserve_x, reserve_y, pool.decimals_x, pool.decimals_y), reserve_y) } 
           else 
-          { balance_x - y(amount_in + reserve_y, k(pool, balance_y, balance_x), reserve_x) };
+          { balance_x - y(amount_in + reserve_y, k(reserve_x, reserve_y, pool.decimals_x, pool.decimals_y), reserve_x) };
         y * if (is_x) { pool.decimals_y } else { pool.decimals_x } / K_PRECISION
     }             
 
-   public(friend) fun swap_token_x<X, Y>(
+   /**
+   * @dev It sells the Coin<X> in a Pool<X, Y> for Coin<Y>. 
+   * @param storage the object that stores the pools Bag 
+   * @param coin_x Coin<X> being sold. 
+   * @param coin_y_min_value the minimum value of Coin<Y> the caller will accept.
+   * @return Coin<Y> bought.
+   * Requirements: 
+   * - Coins X and Y must be sorted.
+   */ 
+   public fun swap_token_x<X, Y>(
       storage: &mut Storage, 
       coin_x: Coin<X>,
       coin_y_min_value: u64,
       ctx: &mut TxContext
       ): Coin<Y> {
+        // Ensure we are selling something
         assert!(coin::value(&coin_x) != 0, ERROR_ZERO_VALUE_SWAP);
 
+        // Conver the coin being sold in balance.
         let coin_x_balance = coin::into_balance(coin_x);
 
+        // Borrow a mutable Pool<X, Y>.
         let pool = borrow_mut_pool<X, Y>(storage);
 
+        // Save the reserves of Pool<X, Y> locally.
         let (coin_x_reserve, coin_y_reserve, _) = get_amounts(pool);  
 
-        assert!(coin_x_reserve != 0 && coin_y_reserve != 0, ERROR_EMPTY_POOL);
-
+        // Store the value being sold locally
         let coin_x_value = balance::value(&coin_x_balance);
         
+        // Calculte how much value of Coin<Y> the caller will receive.
         let coin_y_value = calculate_value_out(pool, coin_x_value, coin_x_reserve, coin_y_reserve, true);
 
+        // Make sure the caller receives more than the minimum amount. 
         assert!(coin_y_value >=  coin_y_min_value, ERROR_SLIPPAGE);
+        // Makes sure the Pool<X, Y> has enough reserves to cover the swap.
+        assert!(coin_y_reserve > coin_y_value, ERROR_NOT_ENOUGH_LIQUIDITY);
 
+        // Emit the SwapTokenX event
         event::emit(
           SwapTokenX<X, Y> {
             id: object:: uid_to_inner(&pool.id), 
@@ -357,31 +520,48 @@ module ipx::dex_stable {
             }
           );
 
+        // Add Balance<X> to the Pool<X, Y> 
         balance::join(&mut pool.balance_x, coin_x_balance);
+        // Remove the value being bought and give to the caller in Coin<Y>.
         coin::take(&mut pool.balance_y, coin_y_value, ctx)
       }
 
-    public(friend) fun swap_token_y<X, Y>(
+  /**
+   * @dev It sells the Coin<Y> in a Pool<X, Y> for Coin<X>. 
+   * @param storage the object that stores the pools Bag 
+   * @param coin_y Coin<Y> being sold. 
+   * @param coin_x_min_value the minimum value of Coin<X> the caller will accept.
+   * @return Coin<X> bought.
+   * Requirements: 
+   * - Coins X and Y must be sorted.
+   */ 
+    public fun swap_token_y<X, Y>(
       storage: &mut Storage, 
       coin_y: Coin<Y>,
       coin_x_min_value: u64,
       ctx: &mut TxContext
       ): Coin<X> {
+        // Ensure we are selling something
         assert!(coin::value(&coin_y) != 0, ERROR_ZERO_VALUE_SWAP);
 
+        // Convert the coin being sold in balance.
         let coin_y_balance = coin::into_balance(coin_y);
 
+        // Borrow a mutable Pool<X, Y>.
         let pool = borrow_mut_pool<X, Y>(storage);
 
+        // Save the reserves of Pool<X, Y> locally.
         let (coin_x_reserve, coin_y_reserve, _) = get_amounts(pool);  
 
-        assert!(coin_x_reserve != 0 && coin_y_reserve != 0, ERROR_EMPTY_POOL);
-
+        // Store the value being sold locally
         let coin_y_value = balance::value(&coin_y_balance);
 
+        // Calculte how much value of Coin<X> the caller will receive.
         let coin_x_value = calculate_value_out(pool, coin_y_value, coin_x_reserve, coin_y_reserve, false);
 
         assert!(coin_x_value >=  coin_x_min_value, ERROR_SLIPPAGE);
+        // Makes sure the Pool<X, Y> has enough reserves to cover the swap.
+        assert!(coin_x_reserve > coin_x_value, ERROR_NOT_ENOUGH_LIQUIDITY);
 
         event::emit(
           SwapTokenY<X, Y> {
@@ -392,47 +572,75 @@ module ipx::dex_stable {
             }
           );
 
+        // Add Balance<Y> to the Pool<X, Y> 
         balance::join(&mut pool.balance_y, coin_y_balance);
+        // Remove the value being bought and give to the caller in Coin<X>.
         coin::take(&mut pool.balance_x, coin_x_value, ctx)
       }
 
-      fun borrow_mut_pool<X, Y>(storage: &mut Storage): &mut SPool<X, Y> {
-      bag::borrow_mut<String, SPool<X, Y>>(&mut storage.pools, utils::get_lp_coin_name<X, Y>())
+    /**
+    * @dev It returns a mutable Pool<X, Y>. 
+    * @param storage the object that stores the pools Bag 
+    * @return The pool for Coins X and Y.
+    * Requirements: 
+    * - Coins X and Y must be sorted.
+    */
+    fun borrow_mut_pool<X, Y>(storage: &mut Storage): &mut SPool<X, Y> {
+        bag::borrow_mut<String, SPool<X, Y>>(&mut storage.pools, utils::get_lp_coin_name<X, Y>())
       }   
 
-      fun mint_fee<X, Y>(pool: &mut SPool<X, Y>, fee_to: address, ctx: &mut TxContext): bool {
-          let is_fee_on = fee_to != ZERO_ACCOUNT;
+    /**
+    * @dev It mints a commission to the `fee_to` address. It collects 20% of the commissions.
+    * We collect the fee by minting more shares.
+    * @param pool mutable Pool<X, Y>
+    * @param fee_to the address that will receive the fee. 
+    * @return bool it indicates if a fee was collected or not.
+    * Requirements: 
+    * - Coins X and Y must be sorted.
+    */
+    fun mint_fee<X, Y>(pool: &mut SPool<X, Y>, fee_to: address, ctx: &mut TxContext): bool {
+        // If the `fee_to` is the zero address @0x0, we do not collect any protocol fees.
+        let is_fee_on = fee_to != ZERO_ACCOUNT;
 
           if (is_fee_on) {
+            // We need to know the last K to calculate how many fees were collected
             if (pool.k_last != 0) {
-              let root_k = math::sqrt(balance::value(&pool.balance_x) * balance::value(&pool.balance_y));
+              // Find the sqrt of the current K
+              let root_k = math::sqrt(k(balance::value(&pool.balance_x), balance::value(&pool.balance_y), pool.decimals_x, decimals_y));
+              // Find the sqrt of the previous K
               let root_k_last = math::sqrt(pool.k_last);
 
+              // If the current K is higher, trading fees were collected. It is the only way to increase the K. 
               if (root_k > root_k_last) {
+                // Number of fees collected in shares
                 let numerator = balance::supply_value(&pool.lp_coin_supply) * (root_k - root_k_last);
+                // logic to collect 1/5
                 let denominator = (root_k * 5) + root_k_last;
                 let liquidity = numerator / denominator;
                 if (liquidity != 0) {
+                  // Increase the shares supply and transfer to the `fee_to` address.
                   let new_balance = balance::increase_supply(&mut pool.lp_coin_supply, liquidity);
                   let new_coins = coin::from_balance(new_balance, ctx);
                   transfer::transfer(new_coins, fee_to);
                 }
               }
             };
-          } else if (pool.k_last > 0) {
+          // If the protocol fees are off and we have k_last value, we remove it.  
+          } else if (pool.k_last != 0) {
             pool.k_last = 0;
           };
 
        is_fee_on
     }
 
-    fun k<X, Y>(
-      pool: &SPool<X, Y>,
+    fun k(
       x: u64, 
-      y: u64
+      y: u64,
+      decimals_x: u64,
+      decimals_y: u64
     ): u64 {
-      let _x = (x * K_PRECISION) / pool.decimals_x; 
-      let _y = (y * K_PRECISION) / pool.decimals_y;
+      let _x = (x * K_PRECISION) / decimals_x; 
+      let _y = (y * K_PRECISION) / decimals_y;
       let _a = (_x * _y) / K_PRECISION;
       let _b = ((_x * _x) / K_PRECISION + (_y * _y) / K_PRECISION);
       (_a * _b) / K_PRECISION // x3y+y3x >= k
@@ -481,6 +689,12 @@ module ipx::dex_stable {
             ((((x0 * x0) / K_PRECISION) * x0) / K_PRECISION)
     }
 
+    /**
+    * @dev Admin only fn to update the fee_to. 
+    * @param _ the AdminCap 
+    * @param storage the object that stores the pools Bag 
+    * @param new_fee_to the new `fee_to`.
+    */
     entry public fun update_fee_to(
       _:&AdminCap, 
       storage: &mut Storage,
@@ -489,6 +703,12 @@ module ipx::dex_stable {
       storage.fee_to = new_fee_to;
     }
 
+
+    /**
+    * @dev Admin only fn to transfer the ownership. 
+    * @param admin_cap the AdminCap 
+    * @param new_admin the new admin.
+    */
     entry public fun transfer_admin_cap(
       admin_cap: AdminCap,
       new_admin: address
