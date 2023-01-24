@@ -1,7 +1,7 @@
 #[test_only]
 module ipx::dex_stable_tests {
 
-    use sui::coin::{mint_for_testing as mint, destroy_for_testing as burn};
+    use sui::coin::{Self, mint_for_testing as mint, destroy_for_testing as burn};
     use sui::test_scenario::{Self as test, Scenario, next_tx, ctx};
     use sui::math;
 
@@ -117,7 +117,7 @@ module ipx::dex_stable_tests {
         test::end(scenario);
     }
 
-        fun test_swap_token_y_(test: &mut Scenario) {
+    fun test_swap_token_y_(test: &mut Scenario) {
        test_create_pool_(test);
 
        let (_, bob) = people();
@@ -158,5 +158,117 @@ module ipx::dex_stable_tests {
         let scenario = scenario();
         test_swap_token_y_(&mut scenario);
         test::end(scenario);
+    }
+
+    fun test_add_liquidity_(test: &mut Scenario) {
+        test_create_pool_(test);
+        remove_fee(test);
+
+        let (_, bob) = people();
+
+        let usdt_value = INITIAL_USDT_VALUE / 10;
+        let usdc_value = INITIAL_USDC_VALUE / 10;
+
+        next_tx(test, bob);
+        {
+        let storage = test::take_shared<Storage>(test);
+        let pool = dex::borrow_pool<USDC, USDT>(&storage);
+        let (_, _, supply) = dex::get_amounts(pool);
+
+        let lp_coin = dex::add_liquidity(
+          &mut storage,
+          mint<USDC>(usdc_value, ctx(test)),
+          mint<USDT>(usdt_value, ctx(test)),
+          0,
+          ctx(test)
+          );
+
+        let pool = dex::borrow_pool<USDC, USDT>(&storage); 
+        let (usdc_reserves, usdt_reserves, _) = dex::get_amounts(pool); 
+
+        assert!(burn(lp_coin)== supply / 10, 0);
+        assert!(usdc_reserves == INITIAL_USDC_VALUE + usdc_value, 0);
+        assert!(usdt_reserves == INITIAL_USDT_VALUE + usdt_value, 0);
+        
+        test::return_shared(storage);
+        }   
+    }
+
+    #[test]
+    fun test_add_liquidity() {
+        let scenario = scenario();
+        test_add_liquidity_(&mut scenario);
+        test::end(scenario);      
+    }
+
+    fun test_remove_liquidity_(test: &mut Scenario) {
+        test_create_pool_(test);
+        remove_fee(test);
+
+        let (_, bob) = people();
+
+        let usdt_value = INITIAL_USDT_VALUE / 10;
+        let usdc_value = INITIAL_USDC_VALUE / 10;
+
+        next_tx(test, bob);
+        {
+          let storage = test::take_shared<Storage>(test);
+
+          let lp_coin = dex::add_liquidity(
+            &mut storage,
+            mint<USDC>(usdc_value, ctx(test)),
+            mint<USDT>(usdt_value, ctx(test)),
+            0,
+            ctx(test)
+          );
+
+          let pool = dex::borrow_pool<USDC, USDT>(&storage);
+          let (usdc_reserves_1, usdt_reserves_1, supply_1) = dex::get_amounts(pool);
+
+          let lp_coin_value = coin::value(&lp_coin);
+
+          let (usdc, usdt) = dex::remove_liquidity(
+              &mut storage,
+              lp_coin,
+              0,
+              0,
+              ctx(test)
+          );
+
+          let pool = dex::borrow_pool<USDC, USDT>(&storage);
+          let (usdc_reserves_2, usdt_reserves_2, supply_2) = dex::get_amounts(pool);
+
+          // rounding issues
+          assert!(burn(usdt) == 9999999898, 0);
+          assert!(burn(usdc) == 9999999, 0);
+          assert!(supply_1 == supply_2 + lp_coin_value, 0);
+          assert!(usdc_reserves_1 == usdc_reserves_2 + 9999999, 0);
+          assert!(usdt_reserves_1 == usdt_reserves_2 + 9999999898, 0);
+
+          test::return_shared(storage);
+        }
+    }
+
+    #[test]
+    fun test_remove_liquidity() {
+        let scenario = scenario();
+        test_remove_liquidity_(&mut scenario);
+        test::end(scenario);
+    }
+
+
+    fun remove_fee(test: &mut Scenario) {
+      let (owner, _) = people();
+        
+       next_tx(test, owner);
+       {
+        let admin_cap = test::take_from_sender<AdminCap>(test);
+        let storage = test::take_shared<Storage>(test);
+
+        dex::update_fee_to(&admin_cap, &mut storage, ZERO_ACCOUNT);
+
+        test::return_shared(storage);
+        test::return_to_sender(test, admin_cap)
+       }
     }
 }
