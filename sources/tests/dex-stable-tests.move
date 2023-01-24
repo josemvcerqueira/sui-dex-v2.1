@@ -73,4 +73,90 @@ module ipx::dex_stable_tests {
         test_create_pool_(&mut scenario);
         test::end(scenario);
     }
+
+    fun test_swap_token_x_(test: &mut Scenario) {
+       test_create_pool_(test);
+
+       let (_, bob) = people();
+
+       next_tx(test, bob);
+       {
+        let storage = test::take_shared<Storage>(test);
+
+        let usdc_amount = INITIAL_USDC_VALUE / 10;
+
+        let pool = dex::borrow_pool<USDC, USDT>(&storage);
+        let (usdc_reserves, usdt_reserves, _) = dex::get_amounts(pool);
+
+        let token_in_amount = usdc_amount - ((usdc_amount * 50) / 100000);
+        // 9086776671
+        let v_usdt_amount_received = (usdt_reserves * token_in_amount) / (token_in_amount + usdc_reserves);
+        // calculated off chain to save time
+        let s_usdt_amount_received = 9990015154;
+
+
+        let usdt = dex::swap_token_x<USDC, USDT>(
+          &mut storage,
+          mint<USDC>(usdc_amount, ctx(test)),
+          0,
+          ctx(test)
+        );
+
+        assert!(burn(usdt) == s_usdt_amount_received, 0);
+        // 10% less slippage
+        assert!(s_usdt_amount_received > v_usdt_amount_received, 0);
+        
+        test::return_shared(storage);
+       }
+    }
+
+    #[test]
+    fun test_swap_token_x() {
+        let scenario = scenario();
+        test_swap_token_x_(&mut scenario);
+        test::end(scenario);
+    }
+
+        fun test_swap_token_y_(test: &mut Scenario) {
+       test_create_pool_(test);
+
+       let (_, bob) = people();
+
+       next_tx(test, bob);
+       {
+        let storage = test::take_shared<Storage>(test);
+
+        let usdt_amount = INITIAL_USDT_VALUE / 10;
+
+        let pool = dex::borrow_pool<USDC, USDT>(&storage);
+        let (usdc_reserves, usdt_reserves, _) = dex::get_amounts(pool);
+
+        let token_in_amount = usdt_amount - ((usdt_amount * 50) / 100000);
+        // 9086776
+        let v_usdc_amount_received = (usdc_reserves * token_in_amount) / (token_in_amount + usdt_reserves);
+        // calculated off chain to save time
+        let s_usdc_amount_received = 9990015;
+
+
+        let usdc = dex::swap_token_y<USDC, USDT>(
+          &mut storage,
+          mint<USDT>(usdt_amount, ctx(test)),
+          0,
+          ctx(test)
+        );
+
+        assert!(burn(usdc) == s_usdc_amount_received, 0);
+        // 10% less slippage
+        assert!(s_usdc_amount_received > v_usdc_amount_received, 0);
+        
+        test::return_shared(storage);
+       }
+    }
+
+    #[test]
+    fun test_swap_token_y() {
+        let scenario = scenario();
+        test_swap_token_y_(&mut scenario);
+        test::end(scenario);
+    }
 }

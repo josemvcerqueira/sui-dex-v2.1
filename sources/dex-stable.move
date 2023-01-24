@@ -444,31 +444,39 @@ module ipx::dex_stable {
     ): u64 {
         // Precision is used to scale the number for more precise calculations. 
         // We convert them to u256 for more precise calculations and to avoid overflows.
-        let precision_u256 = u256::from_u64(PRECISION);
         let token_in_u256 = u256::from_u64(coin_amount);
 
         // We calculate the amount being sold after the fee. 
-        let token_in_amount_minus_fees_adjusted = u256::as_u64(u256::sub(token_in_u256, 
-        u256::div(
+        let token_in_amount_minus_fees_adjusted = u256::sub(token_in_u256, 
+          u256::div(
           u256::mul(token_in_u256, u256::from_u64(FEE_PERCENT)),
-          precision_u256)
-        ));
+          u256::from_u64(PRECISION))
+        );
+
+        let _k = u256::from_u64(k(balance_x, balance_y, pool.decimals_x, pool.decimals_y));  
+
+        let k_precision = u256::from_u64(K_PRECISION);
+        let balance_x = u256::from_u64(balance_x);
+        let balance_y = u256::from_u64(balance_y);
+        let decimals_x = u256::from_u64(pool.decimals_x);
+        let decimals_y = u256::from_u64(pool.decimals_y);
 
         // Calculate the stable curve invariant k = x3y+y3x 
         // We need to consider stable coins with different decimal values
-        let reserve_x = (balance_x * K_PRECISION) / pool.decimals_x; 
-        let reserve_y = (balance_y * K_PRECISION) / pool.decimals_y;
+        let reserve_x = u256::div(u256::mul(balance_x, k_precision), decimals_x); 
+        let reserve_y = u256::div(u256::mul(balance_y, k_precision), decimals_y); 
 
         let amount_in = if (is_x) 
-          { (token_in_amount_minus_fees_adjusted * K_PRECISION) / pool.decimals_x } 
+          { u256::div(u256::mul(token_in_amount_minus_fees_adjusted, k_precision), decimals_x) } 
           else 
-          { (token_in_amount_minus_fees_adjusted * K_PRECISION) / pool.decimals_y };
+          { u256::div(u256::mul(token_in_amount_minus_fees_adjusted, k_precision), decimals_y) };
+
 
         let y = if (is_x) 
-          { balance_y - y(amount_in + reserve_x, k(reserve_x, reserve_y, pool.decimals_x, pool.decimals_y), reserve_y) } 
+          { u256::sub(reserve_y, y(u256::add(amount_in, reserve_x), _k, reserve_y, k_precision)) } 
           else 
-          { balance_x - y(amount_in + reserve_y, k(reserve_x, reserve_y, pool.decimals_x, pool.decimals_y), reserve_x) };
-        y * if (is_x) { pool.decimals_y } else { pool.decimals_x } / K_PRECISION
+          { u256::sub(reserve_x, y(u256::add(amount_in, reserve_y), _k, reserve_x, k_precision)) };
+        u256::as_u64(u256::div(u256::mul(y, if (is_x) { decimals_y } else { decimals_x } ), k_precision))  
     }             
 
    /**
@@ -650,18 +658,14 @@ module ipx::dex_stable {
     }
 
     fun y(
-     x0: u64,
-     xy: u64,
-     y: u64 
-    ): u64 {
+     x0: U256,
+     xy: U256,
+     y: U256,
+     precision: U256 
+    ): U256 {
       let i = 0;
 
-      let x0 = u256::from_u64(x0);
-      let xy = u256::from_u64(xy);
-      let y = u256::from_u64(y);
       let one = u256::from_u64(1);
-      let precision = u256::from_u64(K_PRECISION);
-
 
       while (i < 255) {
         i = i + 1;
@@ -689,7 +693,7 @@ module ipx::dex_stable {
                 }
             }
       };
-      u256::as_u64(y)
+      y
     }
 
     fun f(x0: U256, y: U256, precision: U256): U256 {
