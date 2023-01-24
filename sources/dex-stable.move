@@ -3,7 +3,7 @@ module ipx::dex_stable {
   use std::string::{String}; 
 
   use sui::tx_context::{Self, TxContext};
-  use sui::coin::{Self, Coin, CoinMetadata};
+  use sui::coin::{Self, Coin};
   use sui::balance::{Self, Supply, Balance};
   use sui::object::{Self,UID, ID};
   use sui::transfer;
@@ -12,7 +12,7 @@ module ipx::dex_stable {
   use sui::event;
 
   use ipx::utils;
-  use ipx::u256;
+  use ipx::u256::{Self, U256};
 
   const DEV: address = @dev;
   const ZERO_ACCOUNT: address = @zero;
@@ -139,9 +139,8 @@ module ipx::dex_stable {
       storage: &mut Storage,
       coin_x: Coin<X>,
       coin_y: Coin<Y>,
-      coin_x_metadata: &CoinMetadata<X>,
-      coin_y_metadata: &CoinMetadata<Y>,
-      ctx: &mut TxContext
+      decimals_x: u8,
+      decimals_y: u8,      ctx: &mut TxContext
     ): Coin<SLPCoin<X, Y>> {
       // Store the value of the coins locally
       let coin_x_value = coin::value(&coin_x);
@@ -160,8 +159,8 @@ module ipx::dex_stable {
       assert!(!bag::contains(&storage.pools, lp_coin_name), ERROR_POOL_EXISTS);
 
       // Calculate the scalar of the decimals.
-      let decimals_x = math::pow(10, coin::get_decimals(coin_x_metadata));
-      let decimals_y = math::pow(10, coin::get_decimals(coin_y_metadata));
+      let decimals_x = math::pow(10, decimals_x);
+      let decimals_y = math::pow(10, decimals_y);
 
       // Calculate k = x3y+y3x
       let k = k(coin_x_value, coin_y_value, decimals_x, decimals_y);
@@ -178,11 +177,11 @@ module ipx::dex_stable {
       transfer::transfer(coin::from_balance(min_liquidity_balance, ctx), ZERO_ACCOUNT);
 
       // Calculate an id for the pool and the event
-      let pool_id = object::new(ctx);
+      let id = object::new(ctx);
 
       event::emit(
           PoolCreated<SPool<X, Y>> {
-            id: object::uid_to_inner(&pool_id),
+            id: object::uid_to_inner(&id),
             shares,
             value_x: coin_x_value,
             value_y: coin_y_value,
@@ -195,13 +194,13 @@ module ipx::dex_stable {
         &mut storage.pools,
         lp_coin_name,
         SPool {
-          id: pool_id,
+          id,
           k_last: k,
           lp_coin_supply: supply,
           balance_x: coin::into_balance<X>(coin_x),
           balance_y: coin::into_balance<Y>(coin_y),
-          decimals_x: math::pow(10, coin::get_decimals(coin_x_metadata)),
-          decimals_y: math::pow(10, coin::get_decimals(coin_y_metadata)),
+          decimals_x,
+          decimals_y,
           }
         );
 
@@ -606,7 +605,7 @@ module ipx::dex_stable {
             // We need to know the last K to calculate how many fees were collected
             if (pool.k_last != 0) {
               // Find the sqrt of the current K
-              let root_k = math::sqrt(k(balance::value(&pool.balance_x), balance::value(&pool.balance_y), pool.decimals_x, decimals_y));
+              let root_k = math::sqrt(k(balance::value(&pool.balance_x), balance::value(&pool.balance_y), pool.decimals_x, pool.decimals_y));
               // Find the sqrt of the previous K
               let root_k_last = math::sqrt(pool.k_last);
 
@@ -639,11 +638,15 @@ module ipx::dex_stable {
       decimals_x: u64,
       decimals_y: u64
     ): u64 {
-      let _x = (x * K_PRECISION) / decimals_x; 
-      let _y = (y * K_PRECISION) / decimals_y;
-      let _a = (_x * _y) / K_PRECISION;
-      let _b = ((_x * _x) / K_PRECISION + (_y * _y) / K_PRECISION);
-      (_a * _b) / K_PRECISION // x3y+y3x >= k
+      let x = u256::from_u64(x);
+      let y = u256::from_u64(y);
+      let precision = u256::from_u64(K_PRECISION);
+
+      let _x = u256::div(u256::mul(x, precision), u256::from_u64(decimals_x));  
+      let _y = u256::div(u256::mul(y, precision), u256::from_u64(decimals_y));
+      let _a = u256::div(u256::mul(_x, _y), precision);
+      let _b = u256::add(u256::div(u256::mul(_x, _x), precision), u256::div(u256::mul(_y, _y), precision));
+      u256::as_u64(u256::div(u256::mul(_a, _b), precision)) // x3y+y3x >= k
     }
 
     fun y(
@@ -653,40 +656,52 @@ module ipx::dex_stable {
     ): u64 {
       let i = 0;
 
-      while (i < 63) {
+      let x0 = u256::from_u64(x0);
+      let xy = u256::from_u64(xy);
+      let y = u256::from_u64(y);
+      let one = u256::from_u64(1);
+      let precision = u256::from_u64(K_PRECISION);
+
+
+      while (i < 255) {
         i = i + 1;
 
          let y_prev = y;
-         let k = f(x0, y);
-            if (k < xy) {
-                let dy = ((xy - k) * K_PRECISION) / d(x0, y);
-                y = y + dy;
+         let k = f(x0, y, precision);
+            if (u256::compare(&k , &xy) == u256::get_less_than()) {
+                let dy = u256::div(u256::mul(u256::sub(xy, k), precision), d(x0, y, precision));
+                y = u256::add(y, dy);
             } else {
-                let dy = ((k - xy) * K_PRECISION) / d(x0, y);
-                y = y - dy;
+                let dy = u256::div(u256::mul(u256::sub(k, xy), precision), d(x0, y, precision));
+                y = u256::sub(y, dy);
             };
-            if (y > y_prev) {
-                if (y - y_prev <= 1) {
-                    return y
+            if (u256::compare(&y, &y_prev) == u256::get_greater_than()) {
+              let diff = u256::sub(y, y_prev);
+              let pred = u256::compare(&diff, &one);
+                if (pred == u256::get_less_than() || pred == u256::get_equal()) {
+                    break
                 }
             } else {
-                if (y_prev - y <= 1) {
-                    return y
+              let diff = u256::sub(y_prev, y);
+              let pred = u256::compare(&diff, &one);
+                if (pred == u256::get_less_than() || pred == u256::get_equal()) {
+                    break
                 }
             }
       };
-      y
+      u256::as_u64(y)
     }
 
-    fun f(x0: u64, y: u64): u64 {
-      (x0 * ((((y * y) / K_PRECISION) * y) / K_PRECISION)) / K_PRECISION +
-      (((((x0 * x0) / K_PRECISION) * x0) / K_PRECISION) * y) / K_PRECISION
+    fun f(x0: U256, y: U256, precision: U256): U256 {
+      u256::add(u256::div(u256::mul(x0, u256::div(u256::mul(u256::div(u256::mul(y, y), precision), y), precision)), precision),
+        u256::div(u256::mul(u256::div(u256::mul(u256::div(u256::mul(x0, x0), precision), x0), precision), y), precision)
+        )
     }
 
-    fun d(x0: u64, y: u64): u64 {
-            (3 * x0 * ((y * y) / K_PRECISION)) /
-            K_PRECISION +
-            ((((x0 * x0) / K_PRECISION) * x0) / K_PRECISION)
+    fun d(x0: U256, y: U256, precision: U256): U256 {
+     u256::add(u256::div(u256::mul(u256::from_u64(3),u256::mul(x0,u256::div(u256::mul(y, y), precision))), precision), 
+      u256::div(u256::mul(u256::div(u256::mul(x0, x0), precision), x0), precision)
+      )
     }
 
     /**
@@ -727,8 +742,24 @@ module ipx::dex_stable {
     }
 
     #[test_only]
-    public fun get_k_last<X, Y>(storage: &mut Storage): u64 {
-      let pool = borrow_mut_pool<X, Y>(storage);
+    public fun get_k_last<X, Y>(storage: &Storage): u64 {
+      let pool = borrow_pool<X, Y>(storage);
       pool.k_last
+    }
+
+    #[test_only]
+    public fun get_pool_metadata<X, Y>(storage: &Storage): (u64, u64) {
+      let pool = borrow_pool<X, Y>(storage);
+      (pool.decimals_x, pool.decimals_y)
+    }
+
+    #[test_only]
+    public fun get_k(
+      x: u64, 
+      y: u64,
+      decimals_x: u64,
+      decimals_y: u64
+    ): u64 {
+      k(x, y, decimals_x, decimals_y)
     }
 }
