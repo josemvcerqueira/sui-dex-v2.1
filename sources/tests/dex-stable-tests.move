@@ -5,7 +5,7 @@ module ipx::dex_stable_tests {
     use sui::test_scenario::{Self as test, Scenario, next_tx, ctx};
     use sui::math;
 
-    use ipx::dex_stable::{Self as dex, Storage, AdminCap};
+    use ipx::dex_stable::{Self as dex, Storage, AdminCap, SLPCoin};
     use ipx::test_utils::{people, scenario};
 
     struct USDT has drop {}
@@ -256,6 +256,138 @@ module ipx::dex_stable_tests {
         test::end(scenario);
     }
 
+    fun test_add_liquidity_with_fee_(test: &mut Scenario) {
+        test_create_pool_(test);
+
+        let usdt_value = INITIAL_USDT_VALUE / 10;
+        let usdc_value = INITIAL_USDC_VALUE / 10;
+
+       let (_, bob) = people();
+        
+       next_tx(test, bob);
+       // Get fees
+       {
+        let storage = test::take_shared<Storage>(test);
+
+        let (usdc, usdt) = dex::swap(
+          &mut storage,
+          mint<USDC>(usdc_value, ctx(test)),
+          coin::zero<USDT>(ctx(test)),
+          0,
+          ctx(test)
+        );
+
+        assert!(burn(usdc) == 0, 0);
+        assert!(burn(usdt) != 0, 0);
+
+        test::return_shared(storage); 
+       };
+
+       next_tx(test, bob);
+       {
+        let storage = test::take_shared<Storage>(test);
+
+        let pool = dex::borrow_pool<USDC, USDT>(&storage);
+        let (usdc_reserves_1, usdt_reserves_1, supply_1) = dex::get_amounts(pool);
+        let k_last = dex::get_k_last<USDC, USDT>(&mut storage);
+
+        let root_k = math::sqrt(dex::get_k(usdc_reserves_1, usdt_reserves_1, USDC_DECIMAL_SCALAR, USDT_DECIMAL_SCALAR));
+        let root_k_last = math::sqrt(k_last);
+
+        let numerator = supply_1 * (root_k - root_k_last);
+        let denominator  = (root_k * 5) + root_k_last;
+        let fee = numerator / denominator;
+
+        let lp_coin = dex::add_liquidity(
+          &mut storage,
+          mint<USDC>(usdc_value, ctx(test)),
+          mint<USDT>(usdt_value, ctx(test)),
+          0,
+          ctx(test)
+        );
+
+        let pool = dex::borrow_pool<USDC, USDT>(&storage);
+        let (_, _, supply_2) = dex::get_amounts(pool);
+
+        assert!(fee > 0, 0);
+        assert!(burn(lp_coin) + fee + supply_1 == supply_2, 0);
+        
+        test::return_shared(storage);
+       }
+    }
+
+    #[test]
+    fun test_add_liquidity_with_fee() {
+        let scenario = scenario();
+        test_add_liquidity_with_fee_(&mut scenario);
+        test::end(scenario);
+    }
+
+    fun test_remove_liquidity_with_fee_(test: &mut Scenario) {
+        test_create_pool_(test);
+
+       let (_, bob) = people();
+        
+       next_tx(test, bob);
+        {
+        let storage = test::take_shared<Storage>(test);
+
+        let (usdc, usdt) = dex::swap(
+          &mut storage,
+          mint<USDC>(INITIAL_USDC_VALUE / 10, ctx(test)),
+          coin::zero<USDT>(ctx(test)),
+          0,
+          ctx(test)
+        );
+
+        assert!(burn(usdc) == 0, 0);
+        assert!(burn(usdt) != 0, 0);
+
+        test::return_shared(storage); 
+       };
+
+       next_tx(test, bob);
+       {
+        let storage = test::take_shared<Storage>(test);
+
+        let pool = dex::borrow_pool<USDC, USDT>(&storage);
+        let (usdc_reserves_1, usdt_reserves_1, supply_1) = dex::get_amounts(pool);
+        let k_last = dex::get_k_last<USDC, USDT>(&mut storage);
+
+        let root_k = math::sqrt(dex::get_k(usdc_reserves_1, usdt_reserves_1, USDC_DECIMAL_SCALAR, USDT_DECIMAL_SCALAR));
+        let root_k_last = math::sqrt(k_last);
+
+        let numerator = supply_1 * (root_k - root_k_last);
+        let denominator  = (root_k * 5) + root_k_last;
+        let fee = numerator / denominator;
+
+        let (ether, usdc) = dex::remove_liquidity(
+          &mut storage,
+          mint<SLPCoin<USDC, USDT>>(30000, ctx(test)),
+          0,
+          0,
+          ctx(test)
+        );
+
+        burn(ether);
+        burn(usdc);
+
+        let pool = dex::borrow_pool<USDC, USDT>(&storage);
+        let (_, _, supply_2) = dex::get_amounts(pool);
+
+        assert!(fee > 0, 0);
+        assert!(supply_2 == supply_1 + fee - 30000, 0);
+
+        test::return_shared(storage);
+       }
+    }
+
+    #[test]
+    fun test_remove_liquidity_with_fee() {
+        let scenario = scenario();
+        test_remove_liquidity_with_fee_(&mut scenario);
+        test::end(scenario);
+    }
 
     fun remove_fee(test: &mut Scenario) {
       let (owner, _) = people();
