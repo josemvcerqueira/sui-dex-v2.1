@@ -13,6 +13,7 @@ module ipx::dex_stable {
 
   use ipx::utils;
   use ipx::u256::{Self, U256};
+  use ipx::cast::{cast_to_u64};
 
   const DEV: address = @dev;
   const ZERO_ACCOUNT: address = @zero;
@@ -249,8 +250,8 @@ module ipx::dex_stable {
 
         // Calculate the number of shares to mint. Note if of the coins has a value of 0. The `shares_to_mint` will be 0.
         let share_to_mint = math::min(
-          (coin_x_value * supply) / coin_x_reserve,
-          (coin_y_value * supply) / coin_y_reserve
+          cast_to_u64(((coin_x_value as u128) * (supply as u128)) / (coin_x_reserve as u128)),
+          cast_to_u64(((coin_y_value as u128) * (supply as u128)) / (coin_y_reserve as u128))
         );
 
         // Make sure the user receives the minimum amount desired or higher.
@@ -321,8 +322,8 @@ module ipx::dex_stable {
 
         // Calculate the amount of coins to receive in proportion of the `lp_coin_value`. 
         // It maintains the K = x * y of the Pool<X, Y>
-        let coin_x_removed = (lp_coin_value * coin_x_reserve) / lp_coin_supply;
-        let coin_y_removed = (lp_coin_value * coin_y_reserve) / lp_coin_supply;
+        let coin_x_removed = cast_to_u64(((lp_coin_value as u128) * (coin_x_reserve as u128)) / (lp_coin_supply as u128));
+        let coin_y_removed = cast_to_u64(((lp_coin_value as u128) * (coin_y_reserve as u128)) / (lp_coin_supply as u128));
         
         // Make sure that the caller receives the minimum amount desired.
         assert!(coin_x_removed >= coin_x_min_amount, ERROR_REMOVE_LIQUIDITY_X_AMOUNT);
@@ -581,13 +582,13 @@ module ipx::dex_stable {
               // If the current K is higher, trading fees were collected. It is the only way to increase the K. 
               if (root_k > root_k_last) {
                 // Number of fees collected in shares
-                let numerator = balance::supply_value(&pool.lp_coin_supply) * (root_k - root_k_last);
+                let numerator = (balance::supply_value(&pool.lp_coin_supply) as u128) * ((root_k - root_k_last) as u128);
                 // logic to collect 1/5
-                let denominator = (root_k * 5) + root_k_last;
+                let denominator = (((root_k * 5) + root_k_last) as u128);
                 let liquidity = numerator / denominator;
                 if (liquidity != 0) {
                   // Increase the shares supply and transfer to the `fee_to` address.
-                  let new_balance = balance::increase_supply(&mut pool.lp_coin_supply, liquidity);
+                  let new_balance = balance::increase_supply(&mut pool.lp_coin_supply, cast_to_u64(liquidity));
                   let new_coins = coin::from_balance(new_balance, ctx);
                   transfer::transfer(new_coins, fee_to);
                 }

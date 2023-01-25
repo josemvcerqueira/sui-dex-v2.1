@@ -264,12 +264,12 @@ module ipx::dex_volatile_tests {
         let (ether_reserves_1, usdc_reserves_1, supply_1) = dex::get_amounts(pool);
         let k_last = dex::get_k_last<Ether, USDC>(&mut storage);
 
-        let root_k = math::sqrt(ether_reserves_1 * usdc_reserves_1);
-        let root_k_last = math::sqrt(k_last);
+        let root_k = math::sqrt_u128((ether_reserves_1 as u128) * (usdc_reserves_1 as u128));
+        let root_k_last = math::sqrt_u128(k_last);
 
-        let numerator = supply_1 * (root_k - root_k_last);
+        let numerator = (supply_1 as u128) * (root_k - root_k_last);
         let denominator  = (root_k * 5) + root_k_last;
-        let fee = numerator / denominator;
+        let fee = (numerator / denominator as u128);
 
         let lp_coin = dex::add_liquidity(
           &mut storage,
@@ -283,7 +283,7 @@ module ipx::dex_volatile_tests {
         let (_, _, supply_2) = dex::get_amounts(pool);
 
         assert!(fee > 0, 0);
-        assert!(burn(lp_coin) + fee + supply_1 == supply_2, 0);
+        assert!((burn(lp_coin) as u128) + fee + (supply_1 as u128) == (supply_2 as u128), 0);
         
         test::return_shared(storage);
        }
@@ -325,10 +325,10 @@ module ipx::dex_volatile_tests {
         let (ether_reserves_1, usdc_reserves_1, supply_1) = dex::get_amounts(pool);
         let k_last = dex::get_k_last<Ether, USDC>(&mut storage);
 
-        let root_k = math::sqrt(ether_reserves_1 * usdc_reserves_1);
-        let root_k_last = math::sqrt(k_last);
+        let root_k = math::sqrt_u128((ether_reserves_1 as u128) * (usdc_reserves_1 as u128));
+        let root_k_last = math::sqrt_u128(k_last);
 
-        let numerator = supply_1 * (root_k - root_k_last);
+        let numerator = (supply_1 as u128) * (root_k - root_k_last);
         let denominator  = (root_k * 5) + root_k_last;
         let fee = numerator / denominator;
 
@@ -347,7 +347,7 @@ module ipx::dex_volatile_tests {
         let (_, _, supply_2) = dex::get_amounts(pool);
 
         assert!(fee > 0, 0);
-        assert!(supply_2 == supply_1 + fee - 30000, 0);
+        assert!((supply_2 as u128) == (supply_1 as u128) + fee - 30000, 0);
 
         test::return_shared(storage);
        }

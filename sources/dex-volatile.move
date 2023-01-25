@@ -13,6 +13,7 @@ module ipx::dex_volatile {
 
   use ipx::utils;
   use ipx::u256;
+  use ipx::cast::{cast_to_u64};
 
   const DEV: address = @dev;
   const ZERO_ACCOUNT: address = @zero;
@@ -48,7 +49,7 @@ module ipx::dex_volatile {
 
     struct VPool<phantom X, phantom Y> has key, store {
         id: UID,
-        k_last: u64,
+        k_last: u128,
         lp_coin_supply: Supply<VLPCoin<X, Y>>,
         balance_x: Balance<X>,
         balance_y: Balance<Y>
@@ -154,9 +155,9 @@ module ipx::dex_volatile {
       assert!(!bag::contains(&storage.pools, lp_coin_name), ERROR_POOL_EXISTS);
 
       // Calculate the constant product k = x * y
-      let k = coin_x_value * coin_y_value;
+      let k = (coin_x_value as u128) * (coin_y_value as u128);
       // Calculate the number of shares
-      let shares = math::sqrt(k);
+      let shares = cast_to_u64(math::sqrt_u128(k));
 
       // Create the VLP coin for the Pool<X, Y>. 
       // This coin has 0 decimals and no metadata 
@@ -199,6 +200,7 @@ module ipx::dex_volatile {
       coin::from_balance(sender_balance, ctx)
     }
 
+
     /**
     * @dev This fn allows the caller to deposit coins X and Y on the Pool<X, Y>.
     * This function will not throw if one of the coins has a value of 0, but the caller will get shares (VLPCoin) with a value of 0.
@@ -240,8 +242,8 @@ module ipx::dex_volatile {
 
         // Calculate the number of shares to mint. Note if of the coins has a value of 0. The `shares_to_mint` will be 0.
         let share_to_mint = math::min(
-          (coin_x_value * supply) / coin_x_reserve,
-          (coin_y_value * supply) / coin_y_reserve
+          cast_to_u64(((coin_x_value as u128) * (supply as u128)) / (coin_x_reserve as u128)),
+          cast_to_u64(((coin_y_value as u128) * (supply as u128)) / (coin_y_reserve as u128))
         );
 
         // Make sure the user receives the minimum amount desired or higher.
@@ -267,7 +269,7 @@ module ipx::dex_volatile {
         );
 
         // If the fee mechanism is turned on, we need to save the K for the next calculation.
-        if (is_fee_on) pool.k_last = new_reserve_x * new_reserve_y;
+        if (is_fee_on) pool.k_last = (new_reserve_x as u128) * (new_reserve_y as u128);
 
         // Return the shares(VLPCoin) to the caller.
         coin::from_balance(balance::increase_supply(&mut pool.lp_coin_supply, share_to_mint), ctx)
@@ -312,8 +314,8 @@ module ipx::dex_volatile {
 
         // Calculate the amount of coins to receive in proportion of the `lp_coin_value`. 
         // It maintains the current K of the pool.
-        let coin_x_removed = (lp_coin_value * coin_x_reserve) / lp_coin_supply;
-        let coin_y_removed = (lp_coin_value * coin_y_reserve) / lp_coin_supply;
+        let coin_x_removed = cast_to_u64(((lp_coin_value as u128) * (coin_x_reserve as u128)) / (lp_coin_supply as u128));
+        let coin_y_removed = cast_to_u64(((lp_coin_value as u128) * (coin_y_reserve as u128)) / (lp_coin_supply as u128));
         
         // Make sure that the caller receives the minimum amount desired.
         assert!(coin_x_removed >= coin_x_min_amount, ERROR_REMOVE_LIQUIDITY_X_AMOUNT);
@@ -334,7 +336,7 @@ module ipx::dex_volatile {
         );
 
         // Store the current K for the next fee calculation.
-        if (is_fee_on) pool.k_last = (coin_x_reserve - coin_x_removed) * (coin_y_reserve - coin_y_removed);
+        if (is_fee_on) pool.k_last = ((coin_x_reserve - coin_x_removed) as u128) * ((coin_y_reserve - coin_y_removed) as u128);
 
         // Remove the coins from the Pool<X, Y> and return to the caller.
         (
@@ -541,20 +543,20 @@ module ipx::dex_volatile {
             // We need to know the last K to calculate how many fees were collected
             if (pool.k_last != 0) {
               // Find the sqrt of the current K
-              let root_k = math::sqrt(balance::value(&pool.balance_x) * balance::value(&pool.balance_y));
+              let root_k = math::sqrt_u128((balance::value(&pool.balance_x) as u128) * (balance::value(&pool.balance_y) as u128));
               // Find the sqrt of the previous K
-              let root_k_last = math::sqrt(pool.k_last);
+              let root_k_last = math::sqrt_u128(pool.k_last);
 
               // If the current K is higher, trading fees were collected. It is the only way to increase the K. 
               if (root_k > root_k_last) {
                 // Number of fees collected in shares
-                let numerator = balance::supply_value(&pool.lp_coin_supply) * (root_k - root_k_last);
+                let numerator = (balance::supply_value(&pool.lp_coin_supply) as u128) * (root_k - root_k_last);
                 // logic to collect 1/5
                 let denominator = (root_k * 5) + root_k_last;
                 let liquidity = numerator / denominator;
                 if (liquidity != 0) {
                   // Increase the shares supply and transfer to the `fee_to` address.
-                  let new_balance = balance::increase_supply(&mut pool.lp_coin_supply, liquidity);
+                  let new_balance = balance::increase_supply(&mut pool.lp_coin_supply, cast_to_u64(liquidity));
                   let new_coins = coin::from_balance(new_balance, ctx);
                   transfer::transfer(new_coins, fee_to);
                 }
@@ -605,7 +607,7 @@ module ipx::dex_volatile {
     }
 
     #[test_only]
-    public fun get_k_last<X, Y>(storage: &mut Storage): u64 {
+    public fun get_k_last<X, Y>(storage: &mut Storage): u128 {
       let pool = borrow_mut_pool<X, Y>(storage);
       pool.k_last
     }
