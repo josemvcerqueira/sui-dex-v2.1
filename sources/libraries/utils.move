@@ -2,6 +2,12 @@ module ipx::utils {
   use std::type_name::{Self};
   use std::string::{Self, String}; 
   use std::ascii;
+  use std::vector;
+
+  use sui::coin::{Self, Coin};
+  use sui::tx_context::{Self, TxContext};
+  use sui::pay;
+  use sui::transfer;
 
   use ipx::comparator;
 
@@ -9,12 +15,8 @@ module ipx::utils {
     const SMALLER: u8 = 1;
     const GREATER: u8 = 2;
 
-    const ERROR_INSUFFICIENT_INPUT_AMOUNT: u64 = 0;
-    const ERROR_INSUFFICIENT_LIQUIDITY: u64 = 1;
-    const ERROR_INSUFFICIENT_AMOUNT: u64 = 2;
-    const ERROR_INSUFFICIENT_OUTPOT_AMOUNT: u64 = 3;
-    const ERROR_SAME_COIN: u64 = 4;
-    const ERROR_UNSORTED_COINS: u64 = 5;
+    const ERROR_SAME_COIN: u64 = 1;
+    const ERROR_UNSORTED_COINS: u64 = 2;
 
     public fun get_smaller_enum(): u8 {
         SMALLER
@@ -61,5 +63,36 @@ module ipx::utils {
       string::append_utf8(&mut lp_name, ascii::into_bytes(type_name::into_string(type_name::get<Y>())));
       
       lp_name
+    }
+
+fun handle_coin_vector<X>(
+    vector_x: vector<Coin<X>>,
+    coin_in_value: u64,
+    ctx: &mut TxContext
+  ): Coin<X> {
+    let coin_x = coin::zero<X>(ctx);
+
+    if (vector::is_empty(&vector_x)){
+        vector::destroy_empty(vector_x);
+        return coin_x
+    };
+
+    pay::join_vec(&mut coin_x, vector_x);
+
+    let coin_x_value = coin::value(&coin_x);
+    if (coin_x_value > coin_in_value) pay::split_and_transfer(&mut coin_x, coin_x_value - coin_in_value, tx_context::sender(ctx), ctx);
+
+    coin_x
+  }
+
+fun destroy_zero_or_transfer<T>(
+    coin: Coin<T>,
+    ctx: &mut TxContext
+    ) {
+      if (coin::value(&coin) == 0) {
+        coin::destroy_zero(coin);
+      } else {
+        transfer::transfer(coin, tx_context::sender(ctx));
+      };
     }
 }

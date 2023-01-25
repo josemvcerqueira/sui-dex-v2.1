@@ -244,15 +244,13 @@ module ipx::dex_volatile_tests {
        {
         let storage = test::take_shared<Storage>(test);
 
-        let (ether, usdc) = dex::swap(
+        let usdc = dex::swap_token_x<Ether, USDC>(
           &mut storage,
           mint<Ether>(ether_value, ctx(test)),
-          coin::zero<USDC>(ctx(test)),
           0,
           ctx(test)
         );
 
-        assert!(burn(ether) == 0, 0);
         assert!(burn(usdc) != 0, 0);
 
         test::return_shared(storage); 
@@ -307,15 +305,13 @@ module ipx::dex_volatile_tests {
         {
         let storage = test::take_shared<Storage>(test);
 
-        let (ether, usdc) = dex::swap(
+        let usdc = dex::swap_token_x<Ether, USDC>(
           &mut storage,
           mint<Ether>(INITIAL_ETHER_VALUE / 10, ctx(test)),
-          coin::zero<USDC>(ctx(test)),
           0,
           ctx(test)
         );
 
-        assert!(burn(ether) == 0, 0);
         assert!(burn(usdc) != 0, 0);
 
         test::return_shared(storage); 

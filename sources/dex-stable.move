@@ -209,45 +209,6 @@ module ipx::dex_stable {
     }
 
     /**
-    * @dev This fn performs a swap between X and Y coins on a Pool<X, Y>. 
-    * Only one of the coins must have a value of 0 or the fn will throw. 
-    * It is a helper fn build on top of `swap_token_x` and `swap_token_y`. To save gas a caller can call the underlying fns.
-    * If X is 0, the fn will swap Y -> X and vice versa.
-    * @param storage the object that stores the pools Bag
-    * @oaram coin_x If this coin has a value greater than 0, it will be swapped for Y
-    * @param coin_y If this coin has a value greater than 0, it will be swapped for X
-    * @param coin_out_min_value The minimum value the caller wishes to receive after the swap.
-    * @return A tuple of both coins. One of the coins will be zero, the one that the caller intended to sell, and the other will have a value.
-    * Requirements: 
-    * - Coins X and Y must be sorted.
-    * - One of the coins must have a value of 0 and the other a value greater than 0 
-    */
-    public fun swap<X, Y>(
-      storage: &mut Storage,
-      coin_x: Coin<X>,
-      coin_y: Coin<Y>,
-      coin_out_min_value: u64,
-      ctx: &mut TxContext
-      ): (Coin<X>, Coin<Y>) {
-       let is_coin_x_value_zero = coin::value(&coin_x) == 0;
-
-        // Make sure one of the coins has a value of 0 and the other does not.
-        assert!(!is_coin_x_value_zero || coin::value(&coin_y) != 0, ERROR_ZERO_VALUE_SWAP);
-
-        // If Coin<X> has a value of 0, we will swap Y -> X
-        if (is_coin_x_value_zero) {
-          coin::destroy_zero(coin_x);
-          let coin_x = swap_token_y(storage, coin_y, coin_out_min_value, ctx);
-           (coin_x, coin::zero<Y>(ctx)) 
-        } else {
-          // If Coin<Y> has a value of 0, we will swap X -> Y
-          coin::destroy_zero(coin_y);
-          let coin_y = swap_token_x(storage, coin_x, coin_out_min_value, ctx);
-          (coin::zero<X>(ctx), coin_y) 
-        }
-      }
-
-    /**
     * @dev This fn allows the caller to deposit coins X and Y on the Pool<X, Y>.
     * This function will not throw if one of the coins has a value of 0, but the caller will get shares (SLPCoin) with a value of 0.
     * @param storage the object that stores the pools Bag 
@@ -640,7 +601,7 @@ module ipx::dex_stable {
        is_fee_on
     }
 
-    fun k(
+  fun k(
       x: u64, 
       y: u64,
       decimals_x: u64,
@@ -657,7 +618,7 @@ module ipx::dex_stable {
       u256::as_u64(u256::div(u256::mul(_a, _b), precision)) // x3y+y3x >= k
     }
 
-    fun y(
+  fun y(
      x0: U256,
      xy: U256,
      y: U256,

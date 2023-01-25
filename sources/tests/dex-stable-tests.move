@@ -269,15 +269,13 @@ module ipx::dex_stable_tests {
        {
         let storage = test::take_shared<Storage>(test);
 
-        let (usdc, usdt) = dex::swap(
+        let usdt = dex::swap_token_x<USDC, USDT>(
           &mut storage,
           mint<USDC>(usdc_value, ctx(test)),
-          coin::zero<USDT>(ctx(test)),
           0,
           ctx(test)
         );
 
-        assert!(burn(usdc) == 0, 0);
         assert!(burn(usdt) != 0, 0);
 
         test::return_shared(storage); 
@@ -332,15 +330,13 @@ module ipx::dex_stable_tests {
         {
         let storage = test::take_shared<Storage>(test);
 
-        let (usdc, usdt) = dex::swap(
+        let usdt = dex::swap_token_x<USDC, USDT>(
           &mut storage,
           mint<USDC>(INITIAL_USDC_VALUE / 10, ctx(test)),
-          coin::zero<USDT>(ctx(test)),
           0,
           ctx(test)
         );
 
-        assert!(burn(usdc) == 0, 0);
         assert!(burn(usdt) != 0, 0);
 
         test::return_shared(storage); 
