@@ -53,10 +53,22 @@ module ipx::utils {
         (compare_x_y == get_smaller_enum())
     }
 
-    public fun get_lp_coin_name<X, Y>(): String {
+    public fun get_v_lp_coin_name<X, Y>(): String {
       assert!(are_coins_sorted<X, Y>(), ERROR_UNSORTED_COINS);
       
-      let lp_name = string::utf8(b"");
+      let lp_name = string::utf8(b"v-");
+
+      string::append_utf8(&mut lp_name, ascii::into_bytes(type_name::into_string(type_name::get<X>())));
+      string::append_utf8(&mut lp_name, b"-");
+      string::append_utf8(&mut lp_name, ascii::into_bytes(type_name::into_string(type_name::get<Y>())));
+      
+      lp_name
+    }
+
+    public fun get_s_lp_coin_name<X, Y>(): String {
+      assert!(are_coins_sorted<X, Y>(), ERROR_UNSORTED_COINS);
+      
+      let lp_name = string::utf8(b"s-");
 
       string::append_utf8(&mut lp_name, ascii::into_bytes(type_name::into_string(type_name::get<X>())));
       string::append_utf8(&mut lp_name, b"-");

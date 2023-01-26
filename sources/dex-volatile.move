@@ -149,7 +149,7 @@ module ipx::dex_volatile {
 
       // Construct the name of the VLPCoin, which will be used as a key to store the pool data.
       // This fn will throw if X and Y are not sorted.
-      let lp_coin_name = utils::get_lp_coin_name<X, Y>();
+      let lp_coin_name = utils::get_v_lp_coin_name<X, Y>();
 
       // Checks that the pool does not exist.
       assert!(!bag::contains(&storage.pools, lp_coin_name), ERROR_POOL_EXISTS);
@@ -353,7 +353,7 @@ module ipx::dex_volatile {
     * - Coins X and Y must be sorted.
     */
     public fun borrow_pool<X, Y>(storage: &Storage): &VPool<X, Y> {
-      bag::borrow<String, VPool<X, Y>>(&storage.pools, utils::get_lp_coin_name<X, Y>())
+      bag::borrow<String, VPool<X, Y>>(&storage.pools, utils::get_v_lp_coin_name<X, Y>())
     }
 
 
@@ -365,7 +365,7 @@ module ipx::dex_volatile {
     * - Coins X and Y must be sorted.
     */
     public fun is_pool_deployed<X, Y>(storage: &Storage):bool {
-      bag::contains(&storage.pools, utils::get_lp_coin_name<X, Y>())
+      bag::contains(&storage.pools, utils::get_v_lp_coin_name<X, Y>())
     }
 
     /**
@@ -514,7 +514,7 @@ module ipx::dex_volatile {
     * - Coins X and Y must be sorted.
     */
       fun borrow_mut_pool<X, Y>(storage: &mut Storage): &mut VPool<X, Y> {
-        bag::borrow_mut<String, VPool<X, Y>>(&mut storage.pools, utils::get_lp_coin_name<X, Y>())
+        bag::borrow_mut<String, VPool<X, Y>>(&mut storage.pools, utils::get_v_lp_coin_name<X, Y>())
       }   
 
     /**

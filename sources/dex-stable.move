@@ -154,7 +154,7 @@ module ipx::dex_stable {
 
       // Construct the name of the VLPCoin, which will be used as a key to store the pool data.
       // This fn will throw if X and Y are not sorted.
-      let lp_coin_name = utils::get_lp_coin_name<X, Y>();
+      let lp_coin_name = utils::get_s_lp_coin_name<X, Y>();
 
       // Checks that the pool does not exist.
       assert!(!bag::contains(&storage.pools, lp_coin_name), ERROR_POOL_EXISTS);
@@ -362,7 +362,7 @@ module ipx::dex_stable {
     * - Coins X and Y must be sorted.
     */
     public fun borrow_pool<X, Y>(storage: &Storage): &SPool<X, Y> {
-      bag::borrow<String, SPool<X, Y>>(&storage.pools, utils::get_lp_coin_name<X, Y>())
+      bag::borrow<String, SPool<X, Y>>(&storage.pools, utils::get_s_lp_coin_name<X, Y>())
     }
 
     /**
@@ -373,7 +373,7 @@ module ipx::dex_stable {
     * - Coins X and Y must be sorted.
     */
     public fun is_pool_deployed<X, Y>(storage: &Storage):bool {
-      bag::contains(&storage.pools, utils::get_lp_coin_name<X, Y>())
+      bag::contains(&storage.pools, utils::get_s_lp_coin_name<X, Y>())
     }
 
     /**
@@ -419,7 +419,7 @@ module ipx::dex_stable {
         let y = if (is_x) 
           { reserve_y - y(amount_in + reserve_x, _k, reserve_y) } 
           else 
-          { reserve_x - y(amount_in + reserve_y, _k, reserve_x) };
+          {  reserve_x - y(amount_in + reserve_y, _k, reserve_x) };
 
           mul_div(y, if (is_x) { pool.decimals_y } else { pool.decimals_x }, K_PRECISION)
     }             
@@ -538,7 +538,7 @@ module ipx::dex_stable {
     * - Coins X and Y must be sorted.
     */
     fun borrow_mut_pool<X, Y>(storage: &mut Storage): &mut SPool<X, Y> {
-        bag::borrow_mut<String, SPool<X, Y>>(&mut storage.pools, utils::get_lp_coin_name<X, Y>())
+        bag::borrow_mut<String, SPool<X, Y>>(&mut storage.pools, utils::get_s_lp_coin_name<X, Y>())
       }   
 
     /**
@@ -611,7 +611,7 @@ module ipx::dex_stable {
             if (k < xy) {
                 y = y + mul_div(xy - k, K_PRECISION, d(x0, y));
             } else {
-                y = y - mul_div(k -xy, K_PRECISION, d(x0, y));
+                y = y - mul_div(k - xy, K_PRECISION, d(x0, y));
             };
             if (y > y_prev) {
                 if (y - y_prev <= 1) {
