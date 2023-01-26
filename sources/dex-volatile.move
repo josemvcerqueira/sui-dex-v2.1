@@ -12,8 +12,8 @@ module ipx::dex_volatile {
   use sui::event;
 
   use ipx::utils;
-  use ipx::u256;
   use ipx::cast::{cast_to_u64};
+  use ipx::math::{mul_div, mul_to_u128};
 
   const DEV: address = @dev;
   const ZERO_ACCOUNT: address = @zero;
@@ -155,7 +155,7 @@ module ipx::dex_volatile {
       assert!(!bag::contains(&storage.pools, lp_coin_name), ERROR_POOL_EXISTS);
 
       // Calculate the constant product k = x * y
-      let k = (coin_x_value as u128) * (coin_y_value as u128);
+      let k = mul_to_u128(coin_x_value, coin_y_value);
       // Calculate the number of shares
       let shares = cast_to_u64(math::sqrt_u128(k));
 
@@ -242,8 +242,8 @@ module ipx::dex_volatile {
 
         // Calculate the number of shares to mint. Note if of the coins has a value of 0. The `shares_to_mint` will be 0.
         let share_to_mint = math::min(
-          cast_to_u64(((coin_x_value as u128) * (supply as u128)) / (coin_x_reserve as u128)),
-          cast_to_u64(((coin_y_value as u128) * (supply as u128)) / (coin_y_reserve as u128))
+          mul_div(coin_x_value, supply, coin_x_reserve),
+          mul_div(coin_y_value, supply, coin_y_reserve)
         );
 
         // Make sure the user receives the minimum amount desired or higher.
@@ -269,7 +269,7 @@ module ipx::dex_volatile {
         );
 
         // If the fee mechanism is turned on, we need to save the K for the next calculation.
-        if (is_fee_on) pool.k_last = (new_reserve_x as u128) * (new_reserve_y as u128);
+        if (is_fee_on) pool.k_last = mul_to_u128(new_reserve_x, new_reserve_y);
 
         // Return the shares(VLPCoin) to the caller.
         coin::from_balance(balance::increase_supply(&mut pool.lp_coin_supply, share_to_mint), ctx)
@@ -314,8 +314,8 @@ module ipx::dex_volatile {
 
         // Calculate the amount of coins to receive in proportion of the `lp_coin_value`. 
         // It maintains the current K of the pool.
-        let coin_x_removed = cast_to_u64(((lp_coin_value as u128) * (coin_x_reserve as u128)) / (lp_coin_supply as u128));
-        let coin_y_removed = cast_to_u64(((lp_coin_value as u128) * (coin_y_reserve as u128)) / (lp_coin_supply as u128));
+        let coin_x_removed = mul_div(lp_coin_value, coin_x_reserve, lp_coin_supply);
+        let coin_y_removed = mul_div(lp_coin_value, coin_y_reserve, lp_coin_supply);
         
         // Make sure that the caller receives the minimum amount desired.
         assert!(coin_x_removed >= coin_x_min_amount, ERROR_REMOVE_LIQUIDITY_X_AMOUNT);
@@ -336,7 +336,7 @@ module ipx::dex_volatile {
         );
 
         // Store the current K for the next fee calculation.
-        if (is_fee_on) pool.k_last = ((coin_x_reserve - coin_x_removed) as u128) * ((coin_y_reserve - coin_y_removed) as u128);
+        if (is_fee_on) pool.k_last = mul_to_u128(coin_x_reserve - coin_x_removed, coin_y_reserve - coin_y_removed);
 
         // Remove the coins from the Pool<X, Y> and return to the caller.
         (
@@ -388,24 +388,15 @@ module ipx::dex_volatile {
     * @return the value of A in terms of B.
     */
     public fun calculate_value_out(coin_in_amount: u64, balance_in: u64, balance_out:u64): u64 {
-        // Precision is used to scale the number for more precise calculations. 
-        // We convert them to u256 for more precise calculations and to avoid overflows.
-        let precision_u256 = u256::from_u64(PRECISION);
-        let token_in_u256 = u256::from_u64(coin_in_amount);
-
         // We calculate the amount being sold after the fee. 
-        let token_in_amount_minus_fees_adjusted = u256::sub(token_in_u256, 
-        u256::div(
-          u256::mul(token_in_u256, u256::from_u64(FEE_PERCENT)),
-          precision_u256)
-          );
+        let token_in_amount_minus_fees_adjusted = coin_in_amount - mul_div(coin_in_amount, FEE_PERCENT, PRECISION);
 
         // We maintain the K invariant = reserveB * amountA / reserveA + amount A
-        let numerator = u256::mul(u256::from_u64(balance_out), token_in_amount_minus_fees_adjusted);
-        let denominator = u256::add(u256::from_u64(balance_in), token_in_amount_minus_fees_adjusted);
+        let numerator = mul_to_u128(balance_out, token_in_amount_minus_fees_adjusted);
+        let denominator = balance_in + token_in_amount_minus_fees_adjusted; 
 
         // Divide and convert the value back to u64 and return.
-        u256::as_u64(u256::div(numerator, denominator))
+        cast_to_u64(numerator / (denominator as u128))
     }             
 
    /**
@@ -543,7 +534,7 @@ module ipx::dex_volatile {
             // We need to know the last K to calculate how many fees were collected
             if (pool.k_last != 0) {
               // Find the sqrt of the current K
-              let root_k = math::sqrt_u128((balance::value(&pool.balance_x) as u128) * (balance::value(&pool.balance_y) as u128));
+              let root_k = math::sqrt_u128(mul_to_u128(balance::value(&pool.balance_x), balance::value(&pool.balance_y)));
               // Find the sqrt of the previous K
               let root_k_last = math::sqrt_u128(pool.k_last);
 

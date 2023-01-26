@@ -65,34 +65,34 @@ module ipx::utils {
       lp_name
     }
 
-fun handle_coin_vector<X>(
-    vector_x: vector<Coin<X>>,
-    coin_in_value: u64,
-    ctx: &mut TxContext
-  ): Coin<X> {
-    let coin_x = coin::zero<X>(ctx);
+    fun handle_coin_vector<X>(
+      vector_x: vector<Coin<X>>,
+      coin_in_value: u64,
+      ctx: &mut TxContext
+    ): Coin<X> {
+      let coin_x = coin::zero<X>(ctx);
 
-    if (vector::is_empty(&vector_x)){
+      if (vector::is_empty(&vector_x)){
         vector::destroy_empty(vector_x);
         return coin_x
-    };
-
-    pay::join_vec(&mut coin_x, vector_x);
-
-    let coin_x_value = coin::value(&coin_x);
-    if (coin_x_value > coin_in_value) pay::split_and_transfer(&mut coin_x, coin_x_value - coin_in_value, tx_context::sender(ctx), ctx);
-
-    coin_x
-  }
-
-fun destroy_zero_or_transfer<T>(
-    coin: Coin<T>,
-    ctx: &mut TxContext
-    ) {
-      if (coin::value(&coin) == 0) {
-        coin::destroy_zero(coin);
-      } else {
-        transfer::transfer(coin, tx_context::sender(ctx));
       };
+
+      pay::join_vec(&mut coin_x, vector_x);
+
+      let coin_x_value = coin::value(&coin_x);
+      if (coin_x_value > coin_in_value) pay::split_and_transfer(&mut coin_x, coin_x_value - coin_in_value, tx_context::sender(ctx), ctx);
+
+      coin_x
+    }
+
+    fun destroy_zero_or_transfer<T>(
+      coin: Coin<T>,
+      ctx: &mut TxContext
+      ) {
+        if (coin::value(&coin) == 0) {
+          coin::destroy_zero(coin);
+        } else {
+          transfer::transfer(coin, tx_context::sender(ctx));
+        };
     }
 }
