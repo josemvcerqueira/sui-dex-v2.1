@@ -77,7 +77,7 @@ module ipx::utils {
       lp_name
     }
 
-    fun handle_coin_vector<X>(
+  public  fun handle_coin_vector<X>(
       vector_x: vector<Coin<X>>,
       coin_in_value: u64,
       ctx: &mut TxContext
@@ -97,7 +97,7 @@ module ipx::utils {
       coin_x
     }
 
-    fun destroy_zero_or_transfer<T>(
+   public fun destroy_zero_or_transfer<T>(
       coin: Coin<T>,
       ctx: &mut TxContext
       ) {

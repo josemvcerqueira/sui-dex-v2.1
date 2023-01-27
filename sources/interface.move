@@ -1,340 +1,342 @@
 module ipx::interface {
 
-  // use sui::coin::{Self, Coin};
-  // use sui::tx_context::{Self, TxContext};
-  // use sui::transfer;
-  // use sui::pay;
+  use sui::coin::{Coin};
+  use sui::tx_context::{Self, TxContext};
+  use sui::transfer;
 
-  // use ipx::dex_volatile::{Self as volatile, Storage as VStorage, VLPCoin};
-  // use ipx::dex_stable::{Self as stable, Storage as SStorage, SLPCoin};
-  // use ipx::utils;
+  use ipx::dex_volatile::{Self as volatile, Storage as VStorage, VLPCoin};
+  use ipx::dex_stable::{Self as stable, Storage as SStorage, SLPCoin};
+  use ipx::utils::{destroy_zero_or_transfer, handle_coin_vector, are_coins_sorted};
+  use ipx::router;
 
   const ERROR_UNSORTED_COINS: u64 = 1;
   const ERROR_ZERO_VALUE_SWAP: u64 = 2;
 
-  // entry public fun create_pool<X, Y>(
-  //     storage: &mut VStorage,
-  //     vector_x: vector<Coin<X>>,
-  //     vector_y: vector<Coin<Y>>,
-  //     ctx: &mut TxContext
-  // ) {
-  //   let coin_x = coin::zero<X>(ctx);
-  //   let coin_y = coin::zero<Y>(ctx);
-
-  //   pay::join_vec(&mut coin_x, vector_x);
-  //   pay::join_vec(&mut coin_y, vector_y);
-
-  //   if (utils::are_coins_sorted<X, Y>()) {
-  //     transfer::transfer(
-  //       volatile::create_pool(
-  //         storage,
-  //         coin_x,
-  //         coin_y,
-  //         ctx
-  //       ),
-  //       tx_context::sender(ctx)
-  //     )
-  //   } else {
-  //     transfer::transfer(
-  //       volatile::create_pool(
-  //         storage,
-  //         coin_y,
-  //         coin_x,
-  //         ctx
-  //       ),
-  //       tx_context::sender(ctx)
-  //     )
-  //   }
-  // }
-
-  // entry public fun swap<X, Y>(
-  //   v_storage: &mut VStorage,
-  //   s_storage: &mut SStorage,
-  //   vector_x: vector<Coin<X>>,
-  //   vector_y: vector<Coin<Y>>,
-  //   coin_in_value: u64,
-  //   coin_out_min_value: u64,
-  //   ctx: &mut TxContext
-  // ) {
-  //   let (coin_x, coin_y) = handle_swap_vectors(vector_x, vector_y, coin_in_value, ctx);
-
-  // if (utils::are_coins_sorted<X, Y>()) {
-  //  let (coin_x, coin_y) = swap_<X, Y>(
-  //     v_storage,
-  //     s_storage,
-  //     coin_x,
-  //     coin_y,
-  //     coin_out_min_value,
-  //     ctx
-  //   );
-
-  //   safe_transfer(coin_x, ctx);
-  //   safe_transfer(coin_y, ctx);
-  //   } else {
-  //   let (coin_y, coin_x) = swap_<Y, X>(
-  //     v_storage,
-  //     s_storage,
-  //     coin_y,
-  //     coin_x,
-  //     coin_out_min_value,
-  //     ctx
-  //   );
+  /**
+  * @dev This function does not require the coins to be sorted. It will send back any unused value. 
+  * It create a volatile Pool with Coins X and Y
+  * @param storage The storage object of the ipx::dex_volatile 
+  * @param vector_x A vector of several Coin<X> 
+  * @param vector_y A vector of several Coin<Y> 
+  * @param coin_x_amount The value the caller wishes to deposit for Coin<X> 
+  * @param coin_y_amount The value the caller wishes to deposit for Coin<Y>
+  */
+  entry public fun create_pool<X, Y>(
+      storage: &mut VStorage,
+      vector_x: vector<Coin<X>>,
+      vector_y: vector<Coin<Y>>,
+      coin_x_amount: u64,
+      coin_y_amount: u64,
+      ctx: &mut TxContext
+  ) {
     
-  //   safe_transfer(coin_x, ctx);
-  //   safe_transfer(coin_y, ctx);
-  //   }
-  // }
+    // Create a coin from the vector. It keeps sends any extra coins to the caller
+    // vector total value - coin desired value
+    let coin_x = handle_coin_vector<X>(vector_x, coin_x_amount, ctx);
+    let coin_y = handle_coin_vector<Y>(vector_y, coin_y_amount, ctx);
 
-  // entry public fun one_hop_swap<X, Y, Z>(
-  //   v_storage: &mut VStorage,
-  //   s_storage: &mut SStorage,
-  //   vector_x: vector<Coin<X>>,
-  //   vector_y: vector<Coin<Y>>,
-  //   coin_in_value: u64,
-  //   coin_out_min_value: u64,
-  //   ctx: &mut TxContext
-  // ) {
-  //   let (coin_x, coin_y) = handle_swap_vectors(vector_x, vector_y, coin_in_value, ctx);
+    // Sorts for the caller - to make it easier for the frontend
+    if (are_coins_sorted<X, Y>()) {
+      transfer::transfer(
+        volatile::create_pool(
+          storage,
+          coin_x,
+          coin_y,
+          ctx
+        ),
+        tx_context::sender(ctx)
+      )
+    } else {
+      transfer::transfer(
+        volatile::create_pool(
+          storage,
+          coin_y,
+          coin_x,
+          ctx
+        ),
+        tx_context::sender(ctx)
+      )
+    }
+  }
 
-  //   let (coin_x, coin_y) = one_hop_swap_<X, Y, Z>(
-  //     v_storage,
-  //     s_storage,
-  //     coin_x,
-  //     coin_y,
-  //     coin_out_min_value,
-  //     ctx
-  //   );
+  /**
+  * @dev This function does not require the coins to be sorted. It will send back any unused value. 
+  * It performs a swap and finds the most profitable pool. X -> Y or Y -> X on Pool<X, Y>
+  * @param v_storage The storage object of the ipx::dex_volatile 
+  * @param s_storage The storage object of the ipx::dex_stable 
+  * @param vector_x A vector of several Coin<X> 
+  * @param vector_y A vector of several Coin<Y> 
+  * @param coin_x_amount The value the caller wishes to deposit for Coin<X> 
+  * @param coin_y_amount The value the caller wishes to deposit for Coin<Y>
+  * @param coin_out_min_value The minimum value the caller expects to receive to protect agaisnt slippage
+  */
+  entry public fun swap<X, Y>(
+    v_storage: &mut VStorage,
+    s_storage: &mut SStorage,
+    vector_x: vector<Coin<X>>,
+    vector_y: vector<Coin<Y>>,
+    coin_x_amount: u64,
+    coin_y_amount: u64,
+    coin_out_min_value: u64,
+    ctx: &mut TxContext
+  ) {
+    // Create a coin from the vector. It keeps sends any extra coins to the caller
+    // vector total value - coin desired value
+    let coin_x = handle_coin_vector<X>(vector_x, coin_x_amount, ctx);
+    let coin_y = handle_coin_vector<Y>(vector_y, coin_y_amount, ctx);
 
-  //   safe_transfer(coin_x, ctx);
-  //   safe_transfer(coin_y, ctx);
-  // }
+  if (are_coins_sorted<X, Y>()) {
+   let (coin_x, coin_y) = router::swap<X, Y>(
+      v_storage,
+      s_storage,
+      coin_x,
+      coin_y,
+      coin_out_min_value,
+      ctx
+    );
 
-  // entry public fun two_hop_swap<X, Y, B1, B2>(
-  //   v_storage: &mut VStorage,
-  //   s_storage: &mut SStorage,
-  //   vector_x: vector<Coin<X>>,
-  //   vector_y: vector<Coin<Y>>,
-  //   coin_in_value: u64,
-  //   coin_out_min_value: u64,
-  //   ctx: &mut TxContext
-  // ) {
-  //   let (coin_x, coin_y) = handle_swap_vectors(vector_x, vector_y, coin_in_value, ctx);
-  //   let sender = tx_context::sender(ctx);
-
-  //   // Y -> B1 -> B2 -> X
-  //   if (coin::value(&coin_x) == 0) {
-
-  //   if (utils::are_coins_sorted<Y, B1>()) {
-  //     let (coin_y, coin_b1) = swap_(
-  //       v_storage,
-  //       s_storage,
-  //       coin_y,
-  //       coin::zero<B1>(ctx),
-  //       0,
-  //       ctx
-  //     );
-
-  //     let (coin_b1, coin_x) = one_hop_swap_<B1, X, B2>(
-  //       v_storage,
-  //       s_storage,
-  //       coin_b1,
-  //       coin_x,
-  //       coin_out_min_value,
-  //       ctx
-  //     );
-
-  //     coin::destroy_zero(coin_y);
-  //     coin::destroy_zero(coin_b1);
-  //     transfer::transfer(coin_x, sender);
-  //   } else {
-  //     let (coin_b1, coin_y) = swap_(
-  //       v_storage,
-  //       s_storage,
-  //       coin::zero<B1>(ctx),
-  //       coin_y,
-  //       0,
-  //       ctx
-  //     );
-
-  //     let (coin_b1, coin_x) = one_hop_swap_<B1, X, B2>(
-  //       v_storage,
-  //       s_storage,
-  //       coin_b1,
-  //       coin_x,
-  //       coin_out_min_value,
-  //       ctx
-  //     );
-
-  //     coin::destroy_zero(coin_y);
-  //     coin::destroy_zero(coin_b1);
-  //     transfer::transfer(coin_x, sender);
-  //   }  
-
-  //   // X -> B1 -> B2 -> Y
-  //   } else {
-  //     if (utils::are_coins_sorted<X, B1>()) {
-  //       let (coin_x, coin_b1) = swap_(
-  //         v_storage,
-  //         s_storage,
-  //         coin_x,
-  //         coin::zero<B1>(ctx),
-  //         0,
-  //         ctx
-  //       );
-
-  //      let (coin_b1, coin_y) = one_hop_swap_<B1, Y, B2>(
-  //       v_storage,
-  //       s_storage,
-  //       coin_b1,
-  //       coin_y,
-  //       coin_out_min_value,
-  //       ctx
-  //     );
-
-  //     coin::destroy_zero(coin_x);
-  //     coin::destroy_zero(coin_b1);
-  //     transfer::transfer(coin_y, sender);
-  //     } else {
-  //       let (coin_b1, coin_x) = swap_(
-  //         v_storage,
-  //         s_storage,
-  //         coin::zero<B1>(ctx),
-  //         coin_x,
-  //         0,
-  //         ctx
-  //       );
-
-  //      let (coin_b1, coin_y) = one_hop_swap_<B1, Y, B2>(
-  //       v_storage,
-  //       s_storage,
-  //       coin_b1,
-  //       coin_y,
-  //       coin_out_min_value,
-  //       ctx
-  //     );
-
-  //     coin::destroy_zero(coin_x);
-  //     coin::destroy_zero(coin_b1);
-  //     transfer::transfer(coin_y, sender);
-  //     }
-  //   }
-  // }
-
-  // entry public fun add_liquidity<X, Y>(
-  //   v_storage: &mut VStorage,
-  //   s_storage: &mut SStorage,
-  //   vector_x: vector<Coin<X>>,
-  //   vector_y: vector<Coin<Y>>,
-  //   is_volatile: bool,
-  //   vlp_coin_min_amount: u64,
-  //   ctx: &mut TxContext
-  // ) {
-  //   assert!(utils::are_coins_sorted<X, Y>(), ERROR_UNSORTED_COINS);
-
-  //   let coin_x = coin::zero<X>(ctx);
-  //   let coin_y = coin::zero<Y>(ctx);
-
-  //   pay::join_vec(&mut coin_x, vector_x);
-  //   pay::join_vec(&mut coin_y, vector_y);
-
-  //   let coin_x_value = coin::value(&coin_x);
-  //   let coin_y_value = coin::value(&coin_y);
-  //   let sender = tx_context::sender(ctx);
-
-  //   let (coin_x_reserves, coin_y_reserves, _) = if (is_volatile) {
-  //       volatile::get_amounts(volatile::borrow_pool<X, Y>(v_storage))
-  //   } else {
-  //       stable::get_amounts(stable::borrow_pool<X, Y>(s_storage))
-  //   };
-
-  //   let coin_x_optimal_value = (coin_y_value * coin_x_reserves) / coin_y_reserves;
-
-  //   if (coin_x_value > coin_x_optimal_value) pay::split_and_transfer(&mut coin_x, coin_x_value - coin_x_optimal_value, sender, ctx);
-
-  //   let coin_y_optimal_value = (coin_x_optimal_value * coin_y_reserves) / coin_x_reserves;
-
-  //   if (coin_y_value > coin_y_optimal_value) pay::split_and_transfer(&mut coin_y, coin_y_value - coin_y_optimal_value, sender, ctx);
-
-  //   if (is_volatile) {
-  //     transfer::transfer(
-  //       volatile::add_liquidity(
-  //       v_storage,
-  //       coin_x,
-  //       coin_y,
-  //       vlp_coin_min_amount,
-  //       ctx
-  //     ),
-  //     tx_context::sender(ctx)
-  //   )  
-  //   } else {
-  //     transfer::transfer(
-  //       stable::add_liquidity(
-  //       s_storage,
-  //       coin_x,
-  //       coin_y,
-  //       0,
-  //       ctx
-  //     ),
-  //     tx_context::sender(ctx)
-  //   )  
-  //   }
-  // }
-
-  // entry public fun remove_v_liquidity<X, Y>(
-  //   storage: &mut VStorage,
-  //   vector_lp_coin: vector<Coin<VLPCoin<X, Y>>>,
-  //   coin_amount_in: u64,
-  //   coin_x_min_amount: u64,
-  //   coin_y_min_amount: u64,
-  //   ctx: &mut TxContext
-  // ){
-  //   let coin = coin::zero<VLPCoin<X, Y>>(ctx);
+    destroy_zero_or_transfer(coin_x, ctx);
+    destroy_zero_or_transfer(coin_y, ctx);
+    } else {
+    let (coin_y, coin_x) = router::swap<Y, X>(
+      v_storage,
+      s_storage,
+      coin_y,
+      coin_x,
+      coin_out_min_value,
+      ctx
+    );
     
-  //   pay::join_vec(&mut coin, vector_lp_coin);
+    destroy_zero_or_transfer(coin_x, ctx);
+    destroy_zero_or_transfer(coin_y, ctx);
+    }
+  }
 
-  //   let coin_value = coin::value(&coin);
+  /**
+  * @dev This function does not require the coins to be sorted. It will send back any unused value. 
+  * It performs an one hop swap and finds the most profitable pool. X -> Z -> Y or Y -> Z -> X on Pool<X, Z> -> Pool<Z, Y>
+  * @param v_storage The storage object of the ipx::dex_volatile 
+  * @param s_storage The storage object of the ipx::dex_stable 
+  * @param vector_x A vector of several Coin<X> 
+  * @param vector_y A vector of several Coin<Y> 
+  * @param coin_x_amount The value the caller wishes to deposit for Coin<X> 
+  * @param coin_y_amount The value the caller wishes to deposit for Coin<Y>
+  * @param coin_out_min_value The minimum value the caller expects to receive to protect agaisnt slippage
+  */
+  entry public fun one_hop_swap<X, Y, Z>(
+    v_storage: &mut VStorage,
+    s_storage: &mut SStorage,
+    vector_x: vector<Coin<X>>,
+    vector_y: vector<Coin<Y>>,
+    coin_x_amount: u64,
+    coin_y_amount: u64,
+    coin_out_min_value: u64,
+    ctx: &mut TxContext
+  ) {
 
-  //   let sender = tx_context::sender(ctx);
+    // Create a coin from the vector. It keeps sends any extra coins to the caller
+    // vector total value - coin desired value
+    let coin_x = handle_coin_vector<X>(vector_x, coin_x_amount, ctx);
+    let coin_y = handle_coin_vector<Y>(vector_y, coin_y_amount, ctx);
 
-  //   if (coin_value > coin_amount_in) pay::split_and_transfer(&mut coin, coin_value - coin_amount_in, sender, ctx);
+    let (coin_x, coin_y) = router::one_hop_swap<X, Y, Z>(
+      v_storage,
+      s_storage,
+      coin_x,
+      coin_y,
+      coin_out_min_value,
+      ctx
+    );
 
-  //   let (coin_x, coin_y) = volatile::remove_liquidity(
-  //     storage,
-  //     coin, 
-  //     coin_x_min_amount,
-  //     coin_y_min_amount,
-  //     ctx
-  //   );
+    destroy_zero_or_transfer(coin_x, ctx);
+    destroy_zero_or_transfer(coin_y, ctx);
+  }
 
-  //   transfer::transfer(coin_x, sender);
-  //   transfer::transfer(coin_y, sender);
-  // }
+  /**
+  * @dev This function does not require the coins to be sorted. It will send back any unused value. 
+  * It performs a three hop swap and finds the most profitable pool. X -> B1 -> B2 -> Y or Y -> B1 -> B2 -> X on Pool<X, Z> -> Pool<B1, B2> -> Pool<B2, Y>
+  * @param v_storage The storage object of the ipx::dex_volatile 
+  * @param s_storage The storage object of the ipx::dex_stable 
+  * @param vector_x A vector of several Coin<X> 
+  * @param vector_y A vector of several Coin<Y> 
+  * @param coin_x_amount The value the caller wishes to deposit for Coin<X> 
+  * @param coin_y_amount The value the caller wishes to deposit for Coin<Y>
+  * @param coin_out_min_value The minimum value the caller expects to receive to protect agaisnt slippage
+  */
+  entry public fun two_hop_swap<X, Y, B1, B2>(
+    v_storage: &mut VStorage,
+    s_storage: &mut SStorage,
+    vector_x: vector<Coin<X>>,
+    vector_y: vector<Coin<Y>>,
+    coin_x_amount: u64,
+    coin_y_amount: u64,
+    coin_out_min_value: u64,
+    ctx: &mut TxContext
+  ) {
 
-  // entry public fun remove_s_liquidity<X, Y>(
-  //   storage: &mut SStorage,
-  //   vector_lp_coin: vector<Coin<SLPCoin<X, Y>>>,
-  //   coin_amount_in: u64,
-  //   ctx: &mut TxContext
-  // ){
-  //   let coin = coin::zero<SLPCoin<X, Y>>(ctx);
-    
-  //   pay::join_vec(&mut coin, vector_lp_coin);
+    // Create a coin from the vector. It keeps sends any extra coins to the caller
+    // vector total value - coin desired value
+    let coin_x = handle_coin_vector<X>(vector_x, coin_x_amount, ctx);
+    let coin_y = handle_coin_vector<Y>(vector_y, coin_y_amount, ctx);
 
-  //   let coin_value = coin::value(&coin);
+    let (coin_x, coin_y) = router::two_hop_swap<X, Y, B1, B2>(
+      v_storage,
+      s_storage,
+      coin_x,
+      coin_y,
+      coin_out_min_value,
+      ctx
+    );
 
-  //   let sender = tx_context::sender(ctx);
+    destroy_zero_or_transfer(coin_x, ctx);
+    destroy_zero_or_transfer(coin_y, ctx);
+  }
 
-  //   if (coin_value > coin_amount_in) pay::split_and_transfer(&mut coin, coin_value - coin_amount_in, sender, ctx);
+  /**
+  * @dev This function does not require the coins to be sorted. It will send back any unused value. 
+  * It adds liquidity to a Pool
+  * @param v_storage The storage object of the ipx::dex_volatile 
+  * @param s_storage The storage object of the ipx::dex_stable 
+  * @param vector_x A vector of several Coin<X> 
+  * @param vector_y A vector of several Coin<Y> 
+  * @param coin_x_amount The value the caller wishes to deposit for Coin<X> 
+  * @param coin_y_amount The value the caller wishes to deposit for Coin<Y>
+  * @param is_volatile It indicates if it should add liquidity a stable or volatile pool
+  * @param coin_out_min_value The minimum value the caller expects to receive to protect agaisnt slippage
+  */
+  entry public fun add_liquidity<X, Y>(
+    v_storage: &mut VStorage,
+    s_storage: &mut SStorage,
+    vector_x: vector<Coin<X>>,
+    vector_y: vector<Coin<Y>>,
+    coin_x_amount: u64,
+    coin_y_amount: u64,
+    is_volatile: bool,
+    coin_min_amount: u64,
+    ctx: &mut TxContext
+  ) {
 
-  //   let (coin_x, coin_y) = stable::remove_liquidity(
-  //     storage,
-  //     coin, 
-  //     0,
-  //     0,
-  //     ctx
-  //   );
+    // Create a coin from the vector. It keeps sends any extra coins to the caller
+    // vector total value - coin desired value
+    let coin_x = handle_coin_vector<X>(vector_x, coin_x_amount, ctx);
+    let coin_y = handle_coin_vector<Y>(vector_y, coin_y_amount, ctx);
 
-  //   transfer::transfer(coin_x, sender);
-  //   transfer::transfer(coin_y, sender);
-  // }
+    if (is_volatile) {
+      if (are_coins_sorted<X, Y>()) {
+        transfer::transfer(
+          router::add_v_liquidity(
+          v_storage,
+          coin_x,
+          coin_y,
+          coin_min_amount,
+          ctx
+          ),
+        tx_context::sender(ctx)
+      )  
+      } else {
+        transfer::transfer(
+          router::add_v_liquidity(
+          v_storage,
+          coin_y,
+          coin_x,
+          coin_min_amount,
+          ctx
+          ),
+        tx_context::sender(ctx)
+      )  
+      }
+      } else {
+        if (are_coins_sorted<X, Y>()) {
+          transfer::transfer(
+            router::add_s_liquidity(
+            s_storage,
+            coin_x,
+            coin_y,
+            coin_min_amount,
+            ctx
+            ),
+          tx_context::sender(ctx)
+        )  
+        } else {
+          transfer::transfer(
+            router::add_s_liquidity(
+            s_storage,
+            coin_x,
+            coin_y,
+            coin_min_amount,
+            ctx
+            ),
+          tx_context::sender(ctx)
+        )  
+      }
+    }
+  }
+
+  /**
+  * @dev This function REQUIRES the coins to be sorted. It will send back any unused value. 
+  * It removes liquidity from a volatile pool based on the shares
+  * @param storage The storage object of the ipx::dex_volatile 
+  * @param vector_lp_coin A vector of several VLPCoins
+  * @param coin_amount_in The value the caller wishes to deposit for VLPCoins 
+  * @param coin_x_min_amount The minimum amount of Coin<X> the user wishes to receive
+  * @param coin_y_min_amount The minimum amount of Coin<Y> the user wishes to receive
+  */
+  entry public fun remove_v_liquidity<X, Y>(
+    storage: &mut VStorage,
+    vector_lp_coin: vector<Coin<VLPCoin<X, Y>>>,
+    coin_amount_in: u64,
+    coin_x_min_amount: u64,
+    coin_y_min_amount: u64,
+    ctx: &mut TxContext
+  ){
+    // Create a coin from the vector. It keeps sends any extra coins to the caller
+    // vector total value - coin desired value
+    let coin = handle_coin_vector(vector_lp_coin, coin_amount_in, ctx);
+    let sender = tx_context::sender(ctx);
+
+    let (coin_x, coin_y) = volatile::remove_liquidity(
+      storage,
+      coin, 
+      coin_x_min_amount,
+      coin_y_min_amount,
+      ctx
+    );
+
+    transfer::transfer(coin_x, sender);
+    transfer::transfer(coin_y, sender);
+  }
+
+  /**
+  * @dev This function REQUIRES the coins to be sorted. It will send back any unused value. 
+  * It removes liquidity from a stable pool based on the shares
+  * @param storage The storage object of the ipx::dex_volatile 
+  * @param vector_lp_coin A vector of several SLPCoins
+  * @param coin_amount_in The value the caller wishes to deposit for VLPCoins 
+  * @param coin_x_min_amount The minimum amount of Coin<X> the user wishes to receive
+  * @param coin_y_min_amount The minimum amount of Coin<Y> the user wishes to receive
+  */
+  entry public fun remove_s_liquidity<X, Y>(
+    storage: &mut SStorage,
+    vector_lp_coin: vector<Coin<SLPCoin<X, Y>>>,
+    coin_amount_in: u64,
+    coin_x_min_amount: u64,
+    coin_y_min_amount: u64,
+    ctx: &mut TxContext
+  ){
+    // Create a coin from the vector. It keeps sends any extra coins to the caller
+    // vector total value - coin desired value
+    let coin = handle_coin_vector(vector_lp_coin, coin_amount_in, ctx);
+    let sender = tx_context::sender(ctx);
+
+    let (coin_x, coin_y) = stable::remove_liquidity(
+      storage,
+      coin, 
+      coin_x_min_amount,
+      coin_y_min_amount,
+      ctx
+    );
+
+    transfer::transfer(coin_x, sender);
+    transfer::transfer(coin_y, sender);
+  }
 }
