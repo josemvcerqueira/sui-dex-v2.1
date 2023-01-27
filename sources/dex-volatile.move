@@ -15,22 +15,21 @@ module ipx::dex_volatile {
   use ipx::math::{mul_div, sqrt_u256};
 
   const DEV: address = @dev;
-  const ZERO_ACCOUNT: address = @zero;
-  const MAX_POOL_COIN_AMOUNT: u64 = 18446744073709551615;
+  const ZERO_ACCOUNT: address = @0x0;
+
   const MINIMUM_LIQUIDITY: u64 = 10;
   const PRECISION: u256 = 1000000000000000000; //1e18;
   const FEE_PERCENT: u256 = 3000000000000000; //0.3%  
 
   const ERROR_CREATE_PAIR_ZERO_VALUE: u64 = 1;
-  const ERROR_POOL_IS_FULL: u64 = 2;
-  const ERROR_POOL_EXISTS: u64 = 3;
-  const ERROR_ZERO_VALUE_SWAP: u64 = 4;
-  const ERROR_NOT_ENOUGH_LIQUIDITY: u64 = 5;
-  const ERROR_SLIPPAGE: u64 = 6;
-  const ERROR_ADD_LIQUIDITY_ZERO_AMOUNT: u64 = 7;
-  const ERROR_REMOVE_LIQUIDITY_ZERO_AMOUNT: u64 = 8;
-  const ERROR_REMOVE_LIQUIDITY_X_AMOUNT: u64 = 9;
-  const ERROR_REMOVE_LIQUIDITY_Y_AMOUNT: u64 = 10;
+  const ERROR_POOL_EXISTS: u64 = 2;
+  const ERROR_ZERO_VALUE_SWAP: u64 = 3;
+  const ERROR_NOT_ENOUGH_LIQUIDITY: u64 = 4;
+  const ERROR_SLIPPAGE: u64 = 5;
+  const ERROR_ADD_LIQUIDITY_ZERO_AMOUNT: u64 = 6;
+  const ERROR_REMOVE_LIQUIDITY_ZERO_AMOUNT: u64 = 7;
+  const ERROR_REMOVE_LIQUIDITY_X_AMOUNT: u64 = 8;
+  const ERROR_REMOVE_LIQUIDITY_Y_AMOUNT: u64 = 9;
 
     struct AdminCap has key {
       id: UID,
@@ -141,8 +140,6 @@ module ipx::dex_volatile {
 
       // Ensure that the both coins have a value greater than 0.
       assert!(coin_x_value != 0 && coin_y_value != 0, ERROR_CREATE_PAIR_ZERO_VALUE);
-      // Make sure the value does not exceed the maximum amount to prevent overflows.    
-      assert!(MAX_POOL_COIN_AMOUNT > coin_x_value && MAX_POOL_COIN_AMOUNT > coin_y_value, ERROR_POOL_IS_FULL);
 
       // Construct the name of the VLPCoin, which will be used as a key to store the pool data.
       // This fn will throw if X and Y are not sorted.
@@ -248,10 +245,6 @@ module ipx::dex_volatile {
         // Deposit the coins in the Pool<X, Y>.
         let new_reserve_x = balance::join(&mut pool.balance_x, coin::into_balance(coin_x));
         let new_reserve_y = balance::join(&mut pool.balance_y, coin::into_balance(coin_y));
-
-        // Make sure that the pool is not full.
-        assert!(MAX_POOL_COIN_AMOUNT >= new_reserve_x, ERROR_POOL_IS_FULL);
-        assert!(MAX_POOL_COIN_AMOUNT >= new_reserve_y, ERROR_POOL_IS_FULL);
 
         // Emit the AddLiquidity event
         event::emit(
@@ -520,7 +513,7 @@ module ipx::dex_volatile {
     * Requirements: 
     * - Coins X and Y must be sorted.
     */
-      fun borrow_mut_pool<X, Y>(storage: &mut Storage): &mut VPool<X, Y> {
+    fun borrow_mut_pool<X, Y>(storage: &mut Storage): &mut VPool<X, Y> {
         bag::borrow_mut<String, VPool<X, Y>>(&mut storage.pools, utils::get_v_lp_coin_name<X, Y>())
       }   
 

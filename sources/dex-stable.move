@@ -15,22 +15,22 @@ module ipx::dex_stable {
   use ipx::math::{mul_div, sqrt_u256};
 
   const DEV: address = @dev;
-  const ZERO_ACCOUNT: address = @zero;
+  const ZERO_ACCOUNT: address = @0x0;
+
   const MINIMUM_LIQUIDITY: u64 = 10;
   const PRECISION: u256 = 1000000000000000000; //1e18;
   const FEE_PERCENT: u256 = 500000000000000; //0.05%
   const DESCALE_FACTOR: u256 =  1000000000; //1e9 
 
   const ERROR_CREATE_PAIR_ZERO_VALUE: u64 = 1;
-  const ERROR_POOL_IS_FULL: u64 = 2;
-  const ERROR_POOL_EXISTS: u64 = 3;
-  const ERROR_ZERO_VALUE_SWAP: u64 = 4;
-  const ERROR_NOT_ENOUGH_LIQUIDITY: u64 = 5;
-  const ERROR_SLIPPAGE: u64 = 6;
-  const ERROR_ADD_LIQUIDITY_ZERO_AMOUNT: u64 = 7;
-  const ERROR_REMOVE_LIQUIDITY_ZERO_AMOUNT: u64 = 8;
-  const ERROR_REMOVE_LIQUIDITY_X_AMOUNT: u64 = 9;
-  const ERROR_REMOVE_LIQUIDITY_Y_AMOUNT: u64 = 10;
+  const ERROR_POOL_EXISTS: u64 = 2;
+  const ERROR_ZERO_VALUE_SWAP: u64 = 3;
+  const ERROR_NOT_ENOUGH_LIQUIDITY: u64 = 4;
+  const ERROR_SLIPPAGE: u64 = 5;
+  const ERROR_ADD_LIQUIDITY_ZERO_AMOUNT: u64 = 6;
+  const ERROR_REMOVE_LIQUIDITY_ZERO_AMOUNT: u64 = 7;
+  const ERROR_REMOVE_LIQUIDITY_X_AMOUNT: u64 = 8;
+  const ERROR_REMOVE_LIQUIDITY_Y_AMOUNT: u64 = 9;
 
     struct AdminCap has key {
       id: UID,
@@ -45,13 +45,13 @@ module ipx::dex_stable {
     struct SLPCoin<phantom X, phantom Y> has drop {}
 
     struct SPool<phantom X, phantom Y> has key, store {
-        id: UID,
-        k_last: u256,
-        lp_coin_supply: Supply<SLPCoin<X, Y>>,
-        balance_x: Balance<X>,
-        balance_y: Balance<Y>,
-        decimals_x: u64,
-        decimals_y: u64
+      id: UID,
+      k_last: u256,
+      lp_coin_supply: Supply<SLPCoin<X, Y>>,
+      balance_x: Balance<X>,
+      balance_y: Balance<Y>,
+      decimals_x: u64,
+      decimals_y: u64
     }
 
     // Events
@@ -158,7 +158,7 @@ module ipx::dex_stable {
       let decimals_x = math::pow(10, decimals_x);
       let decimals_y = math::pow(10, decimals_y);
 
-      // Calculate k = x3y+y3x
+      // Calculate k = x^3y + y^3x
       let k = k(coin_x_value, coin_y_value, decimals_x, decimals_y);
       // Calculate the number of shares
       let shares = ((sqrt_u256(k) / DESCALE_FACTOR) as u64) - MINIMUM_LIQUIDITY;
@@ -613,11 +613,7 @@ module ipx::dex_stable {
       (_a * _b) / PRECISION // k = x^3y + y^3x
     }
 
-  fun y(
-     x0: u256,
-     xy: u256,
-     y: u256
-    ): u256 {
+  fun y(x0: u256, xy: u256, y: u256): u256 {
       let i = 0;
 
       while (i < 255) {
@@ -626,21 +622,16 @@ module ipx::dex_stable {
         let k = f(x0, y);
         
         if (k < xy) {
-          let dy = ((xy - k) * PRECISION) / d(x0, y);
-          y = y + dy;
-        } else {
-          let dy = ((k - xy) * PRECISION) / d(x0, y);
-          y = y - dy;
-        };
+            y = y + ((xy - k) * PRECISION) / d(x0, y);
+          } else {
+            y = y - ((k - xy) * PRECISION) / d(x0, y);
+          };
+          
         if (y > y_prev) {
-                if (y - y_prev <= 1) {
-                    break
-                }
-            } else {
-                if (y_prev - y <= 1) {
-                    break
-                }
-            }
+            if (y - y_prev <= 1) break
+          } else {
+            if (y_prev - y <= 1) break
+          };
       };
       y
     }

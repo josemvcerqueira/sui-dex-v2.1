@@ -1,6 +1,5 @@
 #[test_only]
 module ipx::dex_stable_tests {
-    use std::debug;
 
     use sui::coin::{Self, mint_for_testing as mint, destroy_for_testing as burn};
     use sui::test_scenario::{Self as test, Scenario, next_tx, ctx};
@@ -18,13 +17,14 @@ module ipx::dex_stable_tests {
     const INITIAL_USDC_VALUE: u64 = 100 * 1000000;
     const ZERO_ACCOUNT: address = @0x0;
     const MINIMUM_LIQUIDITY: u64 = 10;
+    const DESCALE_FACTOR: u256 =  1000000000; //1e9 
 
 
     fun test_create_pool_(test: &mut Scenario) {
       let (alice, _) = people();
 
-      let initial_k = dex::get_k(INITIAL_USDT_VALUE, INITIAL_USDC_VALUE, USDT_DECIMAL_SCALAR, USDC_DECIMAL_SCALAR);
-      let lp_coin_initial_user_balance = (sqrt_u256(initial_k) as u64) - MINIMUM_LIQUIDITY;
+      let initial_k = dex::get_k(INITIAL_USDC_VALUE, INITIAL_USDT_VALUE, USDC_DECIMAL_SCALAR, USDT_DECIMAL_SCALAR);
+      let lp_coin_initial_user_balance = (sqrt_u256(initial_k) / DESCALE_FACTOR as u64) - MINIMUM_LIQUIDITY;
 
       next_tx(test, alice);
       {
@@ -46,7 +46,7 @@ module ipx::dex_stable_tests {
           ctx(test)
         );
 
-        assert!(burn(lp_coin) == (lp_coin_initial_user_balance - MINIMUM_LIQUIDITY), 0);
+        assert!(burn(lp_coin) == lp_coin_initial_user_balance, 0);
         test::return_shared(storage);
         test::return_to_address(alice, admin_cap);
       };
@@ -59,7 +59,7 @@ module ipx::dex_stable_tests {
         let k_last = dex::get_k_last<USDC, USDT>(&storage);
         let (decimals_x, decimals_y) = dex::get_pool_metadata<USDC, USDT>(&storage);
 
-        assert!(supply == lp_coin_initial_user_balance, 0);
+        assert!(supply == lp_coin_initial_user_balance + MINIMUM_LIQUIDITY, 0);
         assert!(usdc_reserves == INITIAL_USDC_VALUE, 0);
         assert!(usdt_reserves == INITIAL_USDT_VALUE, 0);
         assert!(k_last == initial_k, 0);
@@ -104,9 +104,6 @@ module ipx::dex_stable_tests {
           0,
           ctx(test)
         );
-
-        debug::print(&usdt);
-        debug::print(&v_usdt_amount_received);
 
         assert!(burn(usdt) == s_usdt_amount_received, 0);
         // 10% less slippage
@@ -275,14 +272,38 @@ module ipx::dex_stable_tests {
        {
         let storage = test::take_shared<Storage>(test);
 
-        let usdt = dex::swap_token_x<USDC, USDT>(
+        let r1 = dex::swap_token_x<USDC, USDT>(
           &mut storage,
-          mint<USDC>(usdc_value, ctx(test)),
+          mint<USDC>(INITIAL_USDC_VALUE / 2, ctx(test)),
           0,
           ctx(test)
         );
 
-        assert!(burn(usdt) != 0, 0);
+        let r2 = dex::swap_token_y<USDC, USDT>(
+          &mut storage,
+          mint<USDT>(INITIAL_USDT_VALUE / 2, ctx(test)),
+          0,
+          ctx(test)
+        );
+
+        let r3 = dex::swap_token_x<USDC, USDT>(
+          &mut storage,
+          mint<USDC>(INITIAL_USDC_VALUE / 2, ctx(test)),
+          0,
+          ctx(test)
+        );
+
+        let r4 = dex::swap_token_y<USDC, USDT>(
+          &mut storage,
+          mint<USDT>(INITIAL_USDT_VALUE / 2, ctx(test)),
+          0,
+          ctx(test)
+        );
+
+        assert!(burn(r1) != 0, 0);
+        assert!(burn(r2) != 0, 0);
+        assert!(burn(r3) != 0, 0);
+        assert!(burn(r4) != 0, 0);
 
         test::return_shared(storage); 
        };
@@ -332,17 +353,41 @@ module ipx::dex_stable_tests {
        let (_, bob) = people();
         
        next_tx(test, bob);
-        {
+       {
         let storage = test::take_shared<Storage>(test);
 
-        let usdt = dex::swap_token_x<USDC, USDT>(
+        let r1 = dex::swap_token_x<USDC, USDT>(
           &mut storage,
-          mint<USDC>(INITIAL_USDC_VALUE / 10, ctx(test)),
+          mint<USDC>(INITIAL_USDC_VALUE / 2, ctx(test)),
           0,
           ctx(test)
         );
 
-        assert!(burn(usdt) != 0, 0);
+        let r2 = dex::swap_token_y<USDC, USDT>(
+          &mut storage,
+          mint<USDT>(INITIAL_USDT_VALUE / 2, ctx(test)),
+          0,
+          ctx(test)
+        );
+
+        let r3 = dex::swap_token_x<USDC, USDT>(
+          &mut storage,
+          mint<USDC>(INITIAL_USDC_VALUE / 2, ctx(test)),
+          0,
+          ctx(test)
+        );
+
+        let r4 = dex::swap_token_y<USDC, USDT>(
+          &mut storage,
+          mint<USDT>(INITIAL_USDT_VALUE / 2, ctx(test)),
+          0,
+          ctx(test)
+        );
+
+        assert!(burn(r1) != 0, 0);
+        assert!(burn(r2) != 0, 0);
+        assert!(burn(r3) != 0, 0);
+        assert!(burn(r4) != 0, 0);
 
         test::return_shared(storage); 
        };
