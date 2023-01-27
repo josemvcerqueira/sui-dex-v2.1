@@ -9,9 +9,6 @@ module ipx::interface {
   use ipx::utils::{destroy_zero_or_transfer, handle_coin_vector, are_coins_sorted};
   use ipx::router;
 
-  const ERROR_UNSORTED_COINS: u64 = 1;
-  const ERROR_ZERO_VALUE_SWAP: u64 = 2;
-
   /**
   * @dev This function does not require the coins to be sorted. It will send back any unused value. 
   * It create a volatile Pool with Coins X and Y
