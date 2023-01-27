@@ -28,7 +28,7 @@ The Interest Protocol DEX allows users to create pools, add/remove liquidity and
 
 The DEX supports two types of pools denoted as:
 
-- **Volatile:** `k = x * y` popularied by [Uniswap](https://uniswap.org/whitepaper.pdf)
+- **Volatile:** `k = x * y` popularized by [Uniswap](https://uniswap.org/whitepaper.pdf)
 - **Stable:** `k = yx^3 + xy^3` inspired by Curve's algorithm.
 
 > The DEX will route the trade to the most profitable pool (volatile vs
