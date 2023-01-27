@@ -257,6 +257,92 @@ module ipx::router_tests {
     test::end(scenario);    
   }
 
+  fun test_one_hop_swap_(test: &mut Scenario) {
+    let (alice, _) = people();
+
+    // First Pool (BTC/USDC)
+    let usdc_amount = 360000000 * 1000000;
+    let btc_amount = 400 * 1000000;
+
+    // Second Pool (USDC/USDT)
+    let usdt_amount = 360000000 * 1000000;
+
+    
+    init_markets(test);
+
+    next_tx(test, alice);
+    {
+      let storage = test::take_shared<VStorage>(test);
+
+      burn(volatile::create_pool(
+          &mut storage,
+          mint<BTC>(btc_amount, ctx(test)),
+          mint<USDC>(usdc_amount, ctx(test)),
+          ctx(test)
+      ));
+
+      burn(volatile::create_pool(
+          &mut storage,
+          mint<USDC>(usdc_amount, ctx(test)),
+          mint<USDT>(usdt_amount, ctx(test)),
+          ctx(test)
+      ));
+
+      test::return_shared(storage);
+    };
+
+    next_tx(test, alice);
+    {
+      let v_storage = test::take_shared<VStorage>(test);
+      let s_storage = test::take_shared<SStorage>(test);
+
+      // BTC -> USDC -> USDT
+      let (coin_x, coin_y) = router::one_hop_swap<BTC, USDT, USDC>(
+        &mut v_storage,
+        &mut s_storage,
+        mint<BTC>(usdc_amount / 10 , ctx(test)),
+        coin::zero<USDT>(ctx(test)),
+        0,
+        ctx(test)
+      );
+
+      assert!(burn(coin_x) == 0, 0);
+      assert!(burn(coin_y) > 0, 0);
+
+      test::return_shared(v_storage);
+      test::return_shared(s_storage);      
+    };
+
+    next_tx(test, alice);
+    {
+      let v_storage = test::take_shared<VStorage>(test);
+      let s_storage = test::take_shared<SStorage>(test);
+
+      // USDT -> USDC -> BTC
+      let (coin_x, coin_y) = router::one_hop_swap<BTC, USDT, USDC>(
+        &mut v_storage,
+        &mut s_storage,
+        coin::zero<BTC>(ctx(test)),
+        mint<USDT>(usdt_amount / 10 , ctx(test)),
+        0,
+        ctx(test)
+      );
+
+      assert!(burn(coin_x) > 0, 0);
+      assert!(burn(coin_y) == 0, 0);
+
+      test::return_shared(v_storage);
+      test::return_shared(s_storage);      
+    }
+  }
+
+  #[test]
+  fun test_one_hop_swap() {
+    let scenario = scenario();
+    test_one_hop_swap_(&mut scenario);
+    test::end(scenario);        
+  }
+
   fun init_markets(test: &mut Scenario) {
     let (alice, _) = people();
     next_tx(test, alice);
