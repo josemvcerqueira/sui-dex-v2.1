@@ -1,7 +1,8 @@
 # [Interest Protocol](https://sui.interestprotocol.com/)
 
- <p> <img width="50px"height="50px" src="./assets/logo.png" /></p> Stable & Volatile DEX on the [Sui](https://sui.io/) Network.  
+ <p> <img width="50px"height="50px" src="./assets/logo.png" /></p> 
  
+ Stable & Volatile DEX on the [Sui](https://sui.io/) Network.  
   
 ## Quick start  
   
