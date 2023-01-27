@@ -12,18 +12,14 @@ module ipx::dex_stable {
   use sui::event;
 
   use ipx::utils;
-  use ipx::cast::{cast_to_u64};
-  use ipx::math::{mul_div};
+  use ipx::math::{mul_div, sqrt_u256};
 
   const DEV: address = @dev;
   const ZERO_ACCOUNT: address = @zero;
-  const MAX_POOL_COIN_AMOUNT: u64 = {
-        18446744073709551615 / 10000
-    };
   const MINIMUM_LIQUIDITY: u64 = 10;
-  const PRECISION: u64 = 100000;
-  const FEE_PERCENT: u64 = 50; // 0.05%
-  const K_PRECISION: u64 = 1000000000; //1e9
+  const PRECISION: u256 = 1000000000000000000; //1e18;
+  const FEE_PERCENT: u256 = 500000000000000; //0.05%
+  const DESCALE_FACTOR: u256 =  1000000000; //1e9 
 
   const ERROR_CREATE_PAIR_ZERO_VALUE: u64 = 1;
   const ERROR_POOL_IS_FULL: u64 = 2;
@@ -50,7 +46,7 @@ module ipx::dex_stable {
 
     struct SPool<phantom X, phantom Y> has key, store {
         id: UID,
-        k_last: u64,
+        k_last: u256,
         lp_coin_supply: Supply<SLPCoin<X, Y>>,
         balance_x: Balance<X>,
         balance_y: Balance<Y>,
@@ -141,7 +137,8 @@ module ipx::dex_stable {
       coin_x: Coin<X>,
       coin_y: Coin<Y>,
       decimals_x: u8,
-      decimals_y: u8,      ctx: &mut TxContext
+      decimals_y: u8,      
+      ctx: &mut TxContext
     ): Coin<SLPCoin<X, Y>> {
       // Store the value of the coins locally
       let coin_x_value = coin::value(&coin_x);
@@ -149,8 +146,6 @@ module ipx::dex_stable {
 
       // Ensure that the both coins have a value greater than 0.
       assert!(coin_x_value != 0 && coin_y_value != 0, ERROR_CREATE_PAIR_ZERO_VALUE);    
-      // Make sure the value does not exceed the maximum amount to prevent overflows.    
-      assert!(MAX_POOL_COIN_AMOUNT > coin_x_value && MAX_POOL_COIN_AMOUNT > coin_y_value, ERROR_POOL_IS_FULL);
 
       // Construct the name of the VLPCoin, which will be used as a key to store the pool data.
       // This fn will throw if X and Y are not sorted.
@@ -166,7 +161,7 @@ module ipx::dex_stable {
       // Calculate k = x3y+y3x
       let k = k(coin_x_value, coin_y_value, decimals_x, decimals_y);
       // Calculate the number of shares
-      let shares = math::sqrt(k);
+      let shares = ((sqrt_u256(k) / DESCALE_FACTOR) as u64) - MINIMUM_LIQUIDITY;
 
       // Create the SLP coin for the Pool<X, Y>. 
       // This coin has 0 decimals and no metadata 
@@ -250,8 +245,8 @@ module ipx::dex_stable {
 
         // Calculate the number of shares to mint. Note if of the coins has a value of 0. The `shares_to_mint` will be 0.
         let share_to_mint = math::min(
-          cast_to_u64(((coin_x_value as u128) * (supply as u128)) / (coin_x_reserve as u128)),
-          cast_to_u64(((coin_y_value as u128) * (supply as u128)) / (coin_y_reserve as u128))
+          mul_div(coin_x_value, supply, coin_x_reserve),
+          mul_div(coin_y_value, supply, coin_y_reserve)
         );
 
         // Make sure the user receives the minimum amount desired or higher.
@@ -260,10 +255,6 @@ module ipx::dex_stable {
         // Deposit the coins in the Pool<X, Y>.
         let new_reserve_x = balance::join(&mut pool.balance_x, coin::into_balance(coin_x));
         let new_reserve_y = balance::join(&mut pool.balance_y, coin::into_balance(coin_y));
-
-        // Make sure that the pool is not full.
-        assert!(MAX_POOL_COIN_AMOUNT >= new_reserve_x, ERROR_POOL_IS_FULL);
-        assert!(MAX_POOL_COIN_AMOUNT >= new_reserve_y, ERROR_POOL_IS_FULL);
 
         // Emit the AddLiquidity event
         event::emit(
@@ -322,8 +313,8 @@ module ipx::dex_stable {
 
         // Calculate the amount of coins to receive in proportion of the `lp_coin_value`. 
         // It maintains the K = x * y of the Pool<X, Y>
-        let coin_x_removed = cast_to_u64(((lp_coin_value as u128) * (coin_x_reserve as u128)) / (lp_coin_supply as u128));
-        let coin_y_removed = cast_to_u64(((lp_coin_value as u128) * (coin_y_reserve as u128)) / (lp_coin_supply as u128));
+        let coin_x_removed = mul_div(lp_coin_value, coin_x_reserve, lp_coin_supply);
+        let coin_y_removed = mul_div(lp_coin_value, coin_y_reserve, lp_coin_supply);
         
         // Make sure that the caller receives the minimum amount desired.
         assert!(coin_x_removed >= coin_x_min_amount, ERROR_REMOVE_LIQUIDITY_X_AMOUNT);
@@ -404,24 +395,39 @@ module ipx::dex_stable {
       balance_y:u64,
       is_x: bool
     ): u64 {
-         // We calculate the amount being sold after the fee. 
-        let token_in_amount_minus_fees_adjusted = coin_amount - mul_div(coin_amount, FEE_PERCENT, PRECISION);
-
         let _k = k(balance_x, balance_y, pool.decimals_x, pool.decimals_y);  
+
+        // Precision is used to scale the number for more precise calculations. 
+        // We convert them to u256 for more precise calculations and to avoid overflows.
+        let (coin_amount, balance_x, balance_y) =
+         (
+          (coin_amount as u256),
+          (balance_x as u256),
+          (balance_y as u256)
+         );
+
+        // We calculate the amount being sold after the fee. 
+     // We calculate the amount being sold after the fee. 
+        let token_in_amount_minus_fees_adjusted = coin_amount - ((coin_amount * FEE_PERCENT) / PRECISION);
+
+        let decimals_x = (pool.decimals_x as u256);
+        let decimals_y = (pool.decimals_y as u256);
 
         // Calculate the stable curve invariant k = x3y+y3x 
         // We need to consider stable coins with different decimal values
-        let reserve_x = mul_div(balance_x, K_PRECISION, pool.decimals_x);
-        let reserve_y = mul_div(balance_y, K_PRECISION, pool.decimals_y);
+        let reserve_x = (balance_x * PRECISION) / decimals_x;
+        let reserve_y = (balance_y * PRECISION) / decimals_y;
 
-        let amount_in = mul_div(token_in_amount_minus_fees_adjusted, K_PRECISION, if (is_x) { pool.decimals_x } else { pool.decimals_y });
+        let amount_in = token_in_amount_minus_fees_adjusted * PRECISION 
+          / if (is_x) { decimals_x } else {decimals_y };
+
 
         let y = if (is_x) 
           { reserve_y - y(amount_in + reserve_x, _k, reserve_y) } 
           else 
-          {  reserve_x - y(amount_in + reserve_y, _k, reserve_x) };
+          { reserve_x - y(amount_in + reserve_y, _k, reserve_x) };
 
-          mul_div(y, if (is_x) { pool.decimals_y } else { pool.decimals_x }, K_PRECISION)
+        ((y * if (is_x) { decimals_y } else { decimals_x }) / PRECISION as u64)   
     }             
 
    /**
@@ -558,20 +564,20 @@ module ipx::dex_stable {
             // We need to know the last K to calculate how many fees were collected
             if (pool.k_last != 0) {
               // Find the sqrt of the current K
-              let root_k = math::sqrt(k(balance::value(&pool.balance_x), balance::value(&pool.balance_y), pool.decimals_x, pool.decimals_y));
+              let root_k = sqrt_u256(k(balance::value(&pool.balance_x), balance::value(&pool.balance_y), pool.decimals_x, pool.decimals_y));
               // Find the sqrt of the previous K
-              let root_k_last = math::sqrt(pool.k_last);
+              let root_k_last = sqrt_u256(pool.k_last);
 
               // If the current K is higher, trading fees were collected. It is the only way to increase the K. 
               if (root_k > root_k_last) {
                 // Number of fees collected in shares
-                let numerator = (balance::supply_value(&pool.lp_coin_supply) as u128) * ((root_k - root_k_last) as u128);
+                let numerator = (balance::supply_value(&pool.lp_coin_supply) as u256) * (root_k - root_k_last);
                 // logic to collect 1/5
-                let denominator = (((root_k * 5) + root_k_last) as u128);
+                let denominator = (root_k * 5) + root_k_last;
                 let liquidity = numerator / denominator;
                 if (liquidity != 0) {
                   // Increase the shares supply and transfer to the `fee_to` address.
-                  let new_balance = balance::increase_supply(&mut pool.lp_coin_supply, cast_to_u64(liquidity));
+                  let new_balance = balance::increase_supply(&mut pool.lp_coin_supply, (liquidity as u64));
                   let new_coins = coin::from_balance(new_balance, ctx);
                   transfer::transfer(new_coins, fee_to);
                 }
@@ -590,30 +596,43 @@ module ipx::dex_stable {
       y: u64,
       decimals_x: u64,
       decimals_y: u64
-    ): u64 {
+    ): u256 {
 
-      let _x = mul_div(x, K_PRECISION, decimals_x);
-      let _y = mul_div(y, K_PRECISION, decimals_y);
-      let _a = mul_div(_x, _y, K_PRECISION);
-      let _b = mul_div(_x, _x, K_PRECISION) + mul_div(_y, _y, K_PRECISION);
+      let (x, y, decimals_x, decimals_y) =
+        (
+          (x as u256),
+          (y as u256),
+          (decimals_x as u256),
+          (decimals_y as u256)
+        );  
 
-      mul_div(_a, _b, K_PRECISION) // x3y+y3x >= k
+      let _x = (x * PRECISION) / decimals_x;
+      let _y = (y * PRECISION) / decimals_y;
+      let _a = (_x * _y) / PRECISION;
+      let _b = ((_x * _x) / PRECISION + (_y * _y) / PRECISION);
+      (_a * _b) / PRECISION // k = x^3y + y^3x
     }
 
-  fun y(x0: u64, xy: u64, y:  u64): u64 {
+  fun y(
+     x0: u256,
+     xy: u256,
+     y: u256
+    ): u256 {
       let i = 0;
 
-      while (i < 63) {
+      while (i < 255) {
         i = i + 1;
         let y_prev = y;
         let k = f(x0, y);
-
-            if (k < xy) {
-                y = y + mul_div(xy - k, K_PRECISION, d(x0, y));
-            } else {
-                y = y - mul_div(k - xy, K_PRECISION, d(x0, y));
-            };
-            if (y > y_prev) {
+        
+        if (k < xy) {
+          let dy = ((xy - k) * PRECISION) / d(x0, y);
+          y = y + dy;
+        } else {
+          let dy = ((k - xy) * PRECISION) / d(x0, y);
+          y = y - dy;
+        };
+        if (y > y_prev) {
                 if (y - y_prev <= 1) {
                     break
                 }
@@ -626,14 +645,17 @@ module ipx::dex_stable {
       y
     }
 
-    fun f(x0: u64, y: u64): u64 {
-        mul_div(mul_div(mul_div(y, y, K_PRECISION), y, K_PRECISION), x0, K_PRECISION)
-        + mul_div(mul_div(mul_div(x0, x0, K_PRECISION), x0, K_PRECISION), y, K_PRECISION)
+    fun f(x0: u256, y: u256): u256 {
+        (x0 * ((((y * y) / PRECISION) * y) / PRECISION)) /
+            PRECISION +
+            (((((x0 * x0) / PRECISION) * x0) / PRECISION) * y) /
+            PRECISION
     }
 
-    fun d(x0: u64, y: u64): u64 {
-        mul_div(mul_div(y, y, K_PRECISION), (3 * x0), K_PRECISION)
-        + mul_div(mul_div(x0, x0, K_PRECISION), x0, K_PRECISION)
+    fun d(x0: u256, y: u256): u256 {
+      (3 * x0 * ((y * y) / PRECISION)) /
+            PRECISION +
+            ((((x0 * x0) / PRECISION) * x0) / PRECISION)
     }
 
     /**
@@ -674,7 +696,7 @@ module ipx::dex_stable {
     }
 
     #[test_only]
-    public fun get_k_last<X, Y>(storage: &Storage): u64 {
+    public fun get_k_last<X, Y>(storage: &Storage): u256 {
       let pool = borrow_pool<X, Y>(storage);
       pool.k_last
     }
@@ -691,7 +713,7 @@ module ipx::dex_stable {
       y: u64,
       decimals_x: u64,
       decimals_y: u64
-    ): u64 {
+    ): u256 {
       k(x, y, decimals_x, decimals_y)
     }
 }

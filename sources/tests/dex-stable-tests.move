@@ -1,12 +1,13 @@
 #[test_only]
 module ipx::dex_stable_tests {
+    use std::debug;
 
     use sui::coin::{Self, mint_for_testing as mint, destroy_for_testing as burn};
     use sui::test_scenario::{Self as test, Scenario, next_tx, ctx};
-    use sui::math;
 
     use ipx::dex_stable::{Self as dex, Storage, AdminCap, SLPCoin};
     use ipx::test_utils::{people, scenario};
+    use ipx::math::{sqrt_u256};
 
     struct USDT has drop {}
     struct USDC has drop {}
@@ -16,12 +17,14 @@ module ipx::dex_stable_tests {
     const USDC_DECIMAL_SCALAR: u64 = 1000000; // 6 decimals
     const INITIAL_USDC_VALUE: u64 = 100 * 1000000;
     const ZERO_ACCOUNT: address = @0x0;
+    const MINIMUM_LIQUIDITY: u64 = 10;
+
 
     fun test_create_pool_(test: &mut Scenario) {
       let (alice, _) = people();
 
       let initial_k = dex::get_k(INITIAL_USDT_VALUE, INITIAL_USDC_VALUE, USDT_DECIMAL_SCALAR, USDC_DECIMAL_SCALAR);
-      let lp_coin_initial_user_balance = math::sqrt(initial_k);
+      let lp_coin_initial_user_balance = (sqrt_u256(initial_k) as u64) - MINIMUM_LIQUIDITY;
 
       next_tx(test, alice);
       {
@@ -43,7 +46,7 @@ module ipx::dex_stable_tests {
           ctx(test)
         );
 
-        assert!(burn(lp_coin) == lp_coin_initial_user_balance, 0);
+        assert!(burn(lp_coin) == (lp_coin_initial_user_balance - MINIMUM_LIQUIDITY), 0);
         test::return_shared(storage);
         test::return_to_address(alice, admin_cap);
       };
@@ -56,7 +59,7 @@ module ipx::dex_stable_tests {
         let k_last = dex::get_k_last<USDC, USDT>(&storage);
         let (decimals_x, decimals_y) = dex::get_pool_metadata<USDC, USDT>(&storage);
 
-        assert!(supply == lp_coin_initial_user_balance + 10, 0);
+        assert!(supply == lp_coin_initial_user_balance, 0);
         assert!(usdc_reserves == INITIAL_USDC_VALUE, 0);
         assert!(usdt_reserves == INITIAL_USDT_VALUE, 0);
         assert!(k_last == initial_k, 0);
@@ -88,7 +91,7 @@ module ipx::dex_stable_tests {
         let pool = dex::borrow_pool<USDC, USDT>(&storage);
         let (usdc_reserves, usdt_reserves, _) = dex::get_amounts(pool);
 
-        let token_in_amount = usdc_amount - ((usdc_amount * 50) / 100000);
+        let token_in_amount = usdc_amount - ((usdc_amount * 30) / 10000);
         // 9086776671
         let v_usdt_amount_received = (usdt_reserves * token_in_amount) / (token_in_amount + usdc_reserves);
         // calculated off chain to save time
@@ -101,6 +104,9 @@ module ipx::dex_stable_tests {
           0,
           ctx(test)
         );
+
+        debug::print(&usdt);
+        debug::print(&v_usdt_amount_received);
 
         assert!(burn(usdt) == s_usdt_amount_received, 0);
         // 10% less slippage
@@ -239,11 +245,11 @@ module ipx::dex_stable_tests {
           let (usdc_reserves_2, usdt_reserves_2, supply_2) = dex::get_amounts(pool);
 
           // rounding issues
-          assert!(burn(usdt) == 9999999898, 0);
-          assert!(burn(usdc) == 9999999, 0);
+          assert!(burn(usdt) == 9998714322, 0);
+          assert!(burn(usdc) == 9998714, 0);
           assert!(supply_1 == supply_2 + lp_coin_value, 0);
-          assert!(usdc_reserves_1 == usdc_reserves_2 + 9999999, 0);
-          assert!(usdt_reserves_1 == usdt_reserves_2 + 9999999898, 0);
+          assert!(usdc_reserves_1 == usdc_reserves_2 + 9998714, 0);
+          assert!(usdt_reserves_1 == usdt_reserves_2 + 9998714322, 0);
 
           test::return_shared(storage);
         }
@@ -288,13 +294,12 @@ module ipx::dex_stable_tests {
         let pool = dex::borrow_pool<USDC, USDT>(&storage);
         let (usdc_reserves_1, usdt_reserves_1, supply_1) = dex::get_amounts(pool);
         let k_last = dex::get_k_last<USDC, USDT>(&mut storage);
-
-        let root_k = math::sqrt(dex::get_k(usdc_reserves_1, usdt_reserves_1, USDC_DECIMAL_SCALAR, USDT_DECIMAL_SCALAR));
-        let root_k_last = math::sqrt(k_last);
-
-        let numerator = supply_1 * (root_k - root_k_last);
+        
+        let root_k = sqrt_u256(dex::get_k(usdc_reserves_1, usdt_reserves_1, USDC_DECIMAL_SCALAR, USDT_DECIMAL_SCALAR));
+        let root_k_last = sqrt_u256(k_last);
+        let numerator = (supply_1 as u256) * (root_k - root_k_last);
         let denominator  = (root_k * 5) + root_k_last;
-        let fee = numerator / denominator;
+        let fee = (numerator / denominator as u64);
 
         let lp_coin = dex::add_liquidity(
           &mut storage,
@@ -350,16 +355,15 @@ module ipx::dex_stable_tests {
         let (usdc_reserves_1, usdt_reserves_1, supply_1) = dex::get_amounts(pool);
         let k_last = dex::get_k_last<USDC, USDT>(&mut storage);
 
-        let root_k = math::sqrt(dex::get_k(usdc_reserves_1, usdt_reserves_1, USDC_DECIMAL_SCALAR, USDT_DECIMAL_SCALAR));
-        let root_k_last = math::sqrt(k_last);
-
-        let numerator = supply_1 * (root_k - root_k_last);
+        let root_k = sqrt_u256(dex::get_k(usdc_reserves_1, usdt_reserves_1, USDC_DECIMAL_SCALAR, USDT_DECIMAL_SCALAR));
+        let root_k_last = sqrt_u256(k_last);
+        let numerator = (supply_1 as u256) * (root_k - root_k_last);
         let denominator  = (root_k * 5) + root_k_last;
-        let fee = numerator / denominator;
+        let fee = (numerator / denominator as u64);
 
         let (ether, usdc) = dex::remove_liquidity(
           &mut storage,
-          mint<SLPCoin<USDC, USDT>>(30000, ctx(test)),
+          mint<SLPCoin<USDC, USDT>>(supply_1 / 10, ctx(test)),
           0,
           0,
           ctx(test)
@@ -372,7 +376,7 @@ module ipx::dex_stable_tests {
         let (_, _, supply_2) = dex::get_amounts(pool);
 
         assert!(fee > 0, 0);
-        assert!(supply_2 == supply_1 + fee - 30000, 0);
+        assert!(supply_2 == supply_1 + fee - supply_1 / 10, 0);
 
         test::return_shared(storage);
        }

@@ -7,6 +7,7 @@ module ipx::dex_volatile_tests {
 
     use ipx::dex_volatile::{Self as dex, Storage, AdminCap, VLPCoin};
     use ipx::test_utils::{people, scenario};
+    use ipx::math::{sqrt_u256};
 
     struct Ether {}
     struct USDC {}
@@ -264,10 +265,10 @@ module ipx::dex_volatile_tests {
         let (ether_reserves_1, usdc_reserves_1, supply_1) = dex::get_amounts(pool);
         let k_last = dex::get_k_last<Ether, USDC>(&mut storage);
 
-        let root_k = math::sqrt_u128((ether_reserves_1 as u128) * (usdc_reserves_1 as u128));
-        let root_k_last = math::sqrt_u128(k_last);
+        let root_k = (math::sqrt_u128((ether_reserves_1 as u128) * (usdc_reserves_1 as u128)) as u256);
+        let root_k_last = sqrt_u256(k_last);
 
-        let numerator = (supply_1 as u128) * (root_k - root_k_last);
+        let numerator = (supply_1 as u256) * (root_k - root_k_last);
         let denominator  = (root_k * 5) + root_k_last;
         let fee = (numerator / denominator as u128);
 
@@ -325,10 +326,10 @@ module ipx::dex_volatile_tests {
         let (ether_reserves_1, usdc_reserves_1, supply_1) = dex::get_amounts(pool);
         let k_last = dex::get_k_last<Ether, USDC>(&mut storage);
 
-        let root_k = math::sqrt_u128((ether_reserves_1 as u128) * (usdc_reserves_1 as u128));
-        let root_k_last = math::sqrt_u128(k_last);
+        let root_k = (math::sqrt_u128((ether_reserves_1 as u128) * (usdc_reserves_1 as u128)) as u256);
+        let root_k_last = sqrt_u256(k_last);
 
-        let numerator = (supply_1 as u128) * (root_k - root_k_last);
+        let numerator = (supply_1 as u256) * (root_k - root_k_last);
         let denominator  = (root_k * 5) + root_k_last;
         let fee = numerator / denominator;
 
@@ -347,7 +348,7 @@ module ipx::dex_volatile_tests {
         let (_, _, supply_2) = dex::get_amounts(pool);
 
         assert!(fee > 0, 0);
-        assert!((supply_2 as u128) == (supply_1 as u128) + fee - 30000, 0);
+        assert!((supply_2 as u256) == (supply_1 as u256) + fee - 30000, 0);
 
         test::return_shared(storage);
        }
