@@ -12,6 +12,7 @@ module ipx::router_tests {
   struct USDT {}
   struct USDC {}
   struct BTC {}
+  struct Ether {}
 
   fun test_selects_volatile_if_no_stable_pool_(test: &mut Scenario) {
     let (alice, _) = people();
@@ -300,7 +301,7 @@ module ipx::router_tests {
       let (coin_x, coin_y) = router::one_hop_swap<BTC, USDT, USDC>(
         &mut v_storage,
         &mut s_storage,
-        mint<BTC>(usdc_amount / 10 , ctx(test)),
+        mint<BTC>(btc_amount / 10 , ctx(test)),
         coin::zero<USDT>(ctx(test)),
         0,
         ctx(test)
@@ -340,6 +341,104 @@ module ipx::router_tests {
   fun test_one_hop_swap() {
     let scenario = scenario();
     test_one_hop_swap_(&mut scenario);
+    test::end(scenario);        
+  }
+
+  fun test_two_hop_swap_(test: &mut Scenario) {
+    let (alice, _) = people();
+
+    // First Pool (BTC/USDC)
+    let usdc_amount = 360000000 * 1000000;
+    let btc_amount = 400 * 1000000;
+
+    // Second Pool (USDC/USDT)
+    let usdt_amount = 360000000 * 1000000;
+
+    // Third Pool (ETHER/USDT)
+    let ether_amount = 2500 * 1000000;
+    
+    init_markets(test);
+
+    next_tx(test, alice);
+    {
+      let storage = test::take_shared<VStorage>(test);
+
+      // Pool<BTC/USDC>
+      burn(volatile::create_pool(
+          &mut storage,
+          mint<BTC>(btc_amount, ctx(test)),
+          mint<USDC>(usdc_amount, ctx(test)),
+          ctx(test)
+      ));
+
+      // Pool<USDC/USDT>
+      burn(volatile::create_pool(
+          &mut storage,
+          mint<USDC>(usdc_amount, ctx(test)),
+          mint<USDT>(usdt_amount, ctx(test)),
+          ctx(test)
+      ));
+
+      // Pool<Ether/USDT>
+      burn(volatile::create_pool(
+          &mut storage,
+          mint<Ether>(ether_amount, ctx(test)),
+          mint<USDT>(usdt_amount / 3, ctx(test)),
+          ctx(test)
+      ));
+
+      test::return_shared(storage);
+    };
+
+    next_tx(test, alice);
+    {
+      let v_storage = test::take_shared<VStorage>(test);
+      let s_storage = test::take_shared<SStorage>(test);
+
+      // BTC -> USDC -> USDT -> Ether
+      let (coin_x, coin_y) = router::two_hop_swap<BTC, Ether, USDT, USDC>(
+        &mut v_storage,
+        &mut s_storage,
+        coin::zero<BTC>(ctx(test)),
+        mint<Ether>(ether_amount / 10, ctx(test)),
+        0,
+        ctx(test)
+      );
+
+      assert!(burn(coin_x) > 0, 0);
+      assert!(burn(coin_y) == 0, 0);
+
+      test::return_shared(v_storage);
+      test::return_shared(s_storage);         
+    };
+
+    next_tx(test, alice);
+    {
+      let v_storage = test::take_shared<VStorage>(test);
+      let s_storage = test::take_shared<SStorage>(test);
+
+      // BTC -> USDC -> USDT -> Ether
+      let (coin_x, coin_y) = router::two_hop_swap<BTC, Ether, USDC, USDT>(
+        &mut v_storage,
+        &mut s_storage,
+        mint<BTC>(btc_amount / 10 , ctx(test)),
+        coin::zero<Ether>(ctx(test)),
+        0,
+        ctx(test)
+      );
+
+      assert!(burn(coin_x) == 0, 0);
+      assert!(burn(coin_y) > 0, 0);
+
+      test::return_shared(v_storage);
+      test::return_shared(s_storage);         
+    }        
+  }
+
+  #[test]
+  fun test_two_hop_swap() {
+    let scenario = scenario();
+    test_two_hop_swap_(&mut scenario);
     test::end(scenario);        
   }
 
