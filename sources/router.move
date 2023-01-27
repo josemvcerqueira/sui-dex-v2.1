@@ -1,14 +1,16 @@
 module ipx::router {
 
   use sui::coin::{Self, Coin};
-  use sui::tx_context::{TxContext};
+  use sui::tx_context::{Self, TxContext};
+  use sui::pay;
   
-  use ipx::dex_volatile::{Self as volatile, Storage as VStorage};
-  use ipx::dex_stable::{Self as stable, Storage as SStorage};
+  use ipx::dex_volatile::{Self as volatile, Storage as VStorage, VLPCoin};
+  use ipx::dex_stable::{Self as stable, Storage as SStorage, SLPCoin};
   use ipx::utils;
 
   const ERROR_ZERO_VALUE_SWAP: u64 = 1;
   const ERROR_POOL_NOT_DEPLOYED: u64 = 2;
+  const ERROR_ADD_LIQUIDITY_NOT_ENOUGH_X: u64 = 3;
 
   /**
   * @notice This fun calculates the most profitable pool and calls the fn with the same name on right module
@@ -414,6 +416,86 @@ public fun two_hop_swap<X, Y, B1, B2>(
       (coin_x, coin_y)
       }
     }
+  }
+
+  /**
+  * @notice This function calculates the right ratio to add liquidity to prevent loss to the caller and adds liquidity to volatile Pool<X, Y>
+  * It will return any extra coin_x sent
+  * @param v_storage The storage object of the module ipx::dex_volatile 
+  * @param coin_x The Coin<X> of Pool<X, Y>
+  * @param coin_y The Coin<Y> of Pool<X, Y>
+  * @param vlp_coin_min_amiunt the minimum amount of shares the caller is willing to receive
+  * @return the shares equivalent to the deposited token
+  */
+  public fun add_v_liquidity<X, Y>(
+    v_storage: &mut VStorage,
+    coin_x: Coin<X>,
+    coin_y: Coin<Y>,
+    vlp_coin_min_amount: u64,
+    ctx: &mut TxContext
+  ): (Coin<VLPCoin<X, Y>>) {
+    let coin_x_value = coin::value(&coin_x);
+
+    // Get the current pool reserves
+    let (coin_x_reserves, coin_y_reserves, _) =  volatile::get_amounts(volatile::borrow_pool<X, Y>(v_storage));
+
+    // Calculate optimal X amount based on the Coin<Y> value
+    let coin_x_optimal_value = (coin::value(&coin_y) * coin_x_reserves) / coin_y_reserves;
+
+    // Ensures that the user has sent enough X to prevent loss of funds
+    assert!(coin_x_value >= coin_x_optimal_value, ERROR_ADD_LIQUIDITY_NOT_ENOUGH_X);
+    
+    // Repay the extra amount
+    if (coin_x_value > coin_x_optimal_value) pay::split_and_transfer(&mut coin_x, coin_x_value - coin_x_optimal_value, tx_context::sender(ctx), ctx);
+
+    // Add liquidity
+    volatile::add_liquidity(
+        v_storage,
+        coin_x,
+        coin_y,
+        vlp_coin_min_amount,
+        ctx
+      )
+  }
+
+  /**
+  * @notice This function calculates the right ratio to add liquidity to prevent loss to the caller and adds liquidity to stable Pool<X, Y>
+  * It will return any extra coin_x sent
+  * @param s_storage The storage object of the module ipx::dex_stable 
+  * @param coin_x The Coin<X> of Pool<X, Y>
+  * @param coin_y The Coin<Y> of Pool<X, Y>
+  * @param slp_coin_min_amiunt the minimum amount of shares the caller is willing to receive
+  * @return the shares equivalent to the deposited token
+  */
+  public fun add_s_liquidity<X, Y>(
+    s_storage: &mut SStorage,
+    coin_x: Coin<X>,
+    coin_y: Coin<Y>,
+    slp_coin_min_amount: u64,
+    ctx: &mut TxContext
+  ): (Coin<SLPCoin<X, Y>>) {
+    let coin_x_value = coin::value(&coin_x);
+
+    // Get the current pool reserves
+    let (coin_x_reserves, coin_y_reserves, _) =  stable::get_amounts(stable::borrow_pool<X, Y>(s_storage));
+
+    // Calculate optimal X amount based on the Coin<Y> value
+    let coin_x_optimal_value = (coin::value(&coin_y) * coin_x_reserves) / coin_y_reserves;
+
+    // Ensures that the user has sent enough X to prevent loss of funds
+    assert!(coin_x_value >= coin_x_optimal_value, ERROR_ADD_LIQUIDITY_NOT_ENOUGH_X);
+    
+    // Repay the extra amount
+    if (coin_x_value > coin_x_optimal_value) pay::split_and_transfer(&mut coin_x, coin_x_value - coin_x_optimal_value, tx_context::sender(ctx), ctx);
+
+    // Add liquidity
+    stable::add_liquidity(
+        s_storage,
+        coin_x,
+        coin_y,
+        slp_coin_min_amount,
+        ctx
+      )
   }
 
   /**
