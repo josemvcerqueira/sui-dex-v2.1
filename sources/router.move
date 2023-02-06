@@ -10,7 +10,6 @@ module ipx::router {
 
   const ERROR_ZERO_VALUE_SWAP: u64 = 1;
   const ERROR_POOL_NOT_DEPLOYED: u64 = 2;
-  const ERROR_ADD_LIQUIDITY_NOT_ENOUGH_X: u64 = 3;
 
   /**
   * @notice This fun calculates the most profitable pool and calls the fn with the same name on right module
@@ -417,7 +416,10 @@ public fun two_hop_swap<X, Y, B1, B2>(
       }
     }
   }
-
+  // reserve_x: u64,
+  //   reserve_y: u64,
+  //   desired_amount_x: u64,
+  //   desired_amount_y: u64
   /**
   * @notice This function calculates the right ratio to add liquidity to prevent loss to the caller and adds liquidity to volatile Pool<X, Y>
   * It will return any extra coin_x sent
@@ -435,18 +437,22 @@ public fun two_hop_swap<X, Y, B1, B2>(
     ctx: &mut TxContext
   ): (Coin<VLPCoin<X, Y>>) {
     let coin_x_value = coin::value(&coin_x);
+    let coin_y_value = coin::value(&coin_y);
 
     // Get the current pool reserves
     let (coin_x_reserves, coin_y_reserves, _) =  volatile::get_amounts(volatile::borrow_pool<X, Y>(v_storage));
 
-    // Calculate optimal X amount based on the Coin<Y> value
-    let coin_x_optimal_value = (coin::value(&coin_y) * coin_x_reserves) / coin_y_reserves;
-
-    // Ensures that the user has sent enough X to prevent loss of funds
-    assert!(coin_x_value >= coin_x_optimal_value, ERROR_ADD_LIQUIDITY_NOT_ENOUGH_X);
+    // Calculate an optimal coinX and coinY amount to keep the pool's ratio
+    let (optimal_x_amount, optimal_y_amount) = calculate_optimal_add_liquidity(
+        coin_x_value,
+        coin_y_value,
+        coin_x_reserves,
+        coin_y_reserves
+    );
     
     // Repay the extra amount
-    if (coin_x_value > coin_x_optimal_value) pay::split_and_transfer(&mut coin_x, coin_x_value - coin_x_optimal_value, tx_context::sender(ctx), ctx);
+    if (coin_x_value > optimal_x_amount) pay::split_and_transfer(&mut coin_x, coin_x_value - optimal_x_amount, tx_context::sender(ctx), ctx);
+    if (coin_y_value > optimal_y_amount) pay::split_and_transfer(&mut coin_x, coin_y_value - optimal_y_amount, tx_context::sender(ctx), ctx);
 
     // Add liquidity
     volatile::add_liquidity(
@@ -475,18 +481,22 @@ public fun two_hop_swap<X, Y, B1, B2>(
     ctx: &mut TxContext
   ): (Coin<SLPCoin<X, Y>>) {
     let coin_x_value = coin::value(&coin_x);
-
+    let coin_y_value = coin::value(&coin_y);
+    
     // Get the current pool reserves
     let (coin_x_reserves, coin_y_reserves, _) =  stable::get_amounts(stable::borrow_pool<X, Y>(s_storage));
 
-    // Calculate optimal X amount based on the Coin<Y> value
-    let coin_x_optimal_value = (coin::value(&coin_y) * coin_x_reserves) / coin_y_reserves;
-
-    // Ensures that the user has sent enough X to prevent loss of funds
-    assert!(coin_x_value >= coin_x_optimal_value, ERROR_ADD_LIQUIDITY_NOT_ENOUGH_X);
+    // Calculate an optimal coinX and coinY amount to keep the pool's ratio
+    let (optimal_x_amount, optimal_y_amount) = calculate_optimal_add_liquidity(
+        coin_x_value,
+        coin_y_value,
+        coin_x_reserves,
+        coin_y_reserves
+    );
     
     // Repay the extra amount
-    if (coin_x_value > coin_x_optimal_value) pay::split_and_transfer(&mut coin_x, coin_x_value - coin_x_optimal_value, tx_context::sender(ctx), ctx);
+    if (coin_x_value > optimal_x_amount) pay::split_and_transfer(&mut coin_x, coin_x_value - optimal_x_amount, tx_context::sender(ctx), ctx);
+    if (coin_y_value > optimal_y_amount) pay::split_and_transfer(&mut coin_x, coin_y_value - optimal_y_amount, tx_context::sender(ctx), ctx);
 
     // Add liquidity
     stable::add_liquidity(
@@ -550,6 +560,25 @@ public fun two_hop_swap<X, Y, B1, B2>(
 
     // Volatile pools consumes less gas and is more profitable for the protocol :) 
     v_amount_out >= s_amount_out
+  }
+  
+  fun calculate_optimal_add_liquidity(
+    desired_amount_x: u64,
+    desired_amount_y: u64,
+    reserve_x: u64,
+    reserve_y: u64
+  ): (u64, u64) {
+
+    if (reserve_x == 0 && reserve_y == 0) return (desired_amount_x, desired_amount_y);
+
+    let optimal_y_amount = utils::quote_liquidity(desired_amount_x, reserve_x, reserve_y);
+
+    if (desired_amount_y > optimal_y_amount) {
+      (desired_amount_x, optimal_y_amount)
+    } else {
+      let optimal_x_amount = utils::quote_liquidity(desired_amount_y, reserve_y, reserve_x);
+      (optimal_x_amount, desired_amount_y)
+    }
   }
 }
 

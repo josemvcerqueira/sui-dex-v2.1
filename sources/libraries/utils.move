@@ -107,4 +107,8 @@ module ipx::utils {
           transfer::transfer(coin, tx_context::sender(ctx));
         };
     }
+
+    public fun quote_liquidity(amount_a: u64, reserves_a: u64, reserves_b: u64): u64 {
+      amount_a * reserves_b / reserves_a
+    }
 }
