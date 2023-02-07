@@ -27,7 +27,7 @@ module ipx::interface {
       ctx: &mut TxContext
   ) {
     
-    // Create a coin from the vector. It keeps sends any extra coins to the caller
+    // Create a coin from the vector. It keeps the desired amound and sends any extra coins to the caller
     // vector total value - coin desired value
     let coin_x = handle_coin_vector<X>(vector_x, coin_x_amount, ctx);
     let coin_y = handle_coin_vector<Y>(vector_y, coin_y_amount, ctx);
@@ -77,7 +77,7 @@ module ipx::interface {
     coin_out_min_value: u64,
     ctx: &mut TxContext
   ) {
-    // Create a coin from the vector. It keeps sends any extra coins to the caller
+    // Create a coin from the vector. It keeps the desired amound and sends any extra coins to the caller
     // vector total value - coin desired value
     let coin_x = handle_coin_vector<X>(vector_x, coin_x_amount, ctx);
     let coin_y = handle_coin_vector<Y>(vector_y, coin_y_amount, ctx);
@@ -131,7 +131,7 @@ module ipx::interface {
     ctx: &mut TxContext
   ) {
 
-    // Create a coin from the vector. It keeps sends any extra coins to the caller
+    // Create a coin from the vector. It keeps the desired amound and sends any extra coins to the caller
     // vector total value - coin desired value
     let coin_x = handle_coin_vector<X>(vector_x, coin_x_amount, ctx);
     let coin_y = handle_coin_vector<Y>(vector_y, coin_y_amount, ctx);
@@ -213,7 +213,7 @@ module ipx::interface {
     ctx: &mut TxContext
   ) {
 
-    // Create a coin from the vector. It keeps sends any extra coins to the caller
+    // Create a coin from the vector. It keeps the desired amound and sends any extra coins to the caller
     // vector total value - coin desired value
     let coin_x = handle_coin_vector<X>(vector_x, coin_x_amount, ctx);
     let coin_y = handle_coin_vector<Y>(vector_y, coin_y_amount, ctx);
@@ -286,7 +286,7 @@ module ipx::interface {
     coin_y_min_amount: u64,
     ctx: &mut TxContext
   ){
-    // Create a coin from the vector. It keeps sends any extra coins to the caller
+    // Create a coin from the vector. It keeps the desired amound and sends any extra coins to the caller
     // vector total value - coin desired value
     let coin = handle_coin_vector(vector_lp_coin, coin_amount_in, ctx);
     let sender = tx_context::sender(ctx);
@@ -320,7 +320,7 @@ module ipx::interface {
     coin_y_min_amount: u64,
     ctx: &mut TxContext
   ){
-    // Create a coin from the vector. It keeps sends any extra coins to the caller
+    // Create a coin from the vector. It keeps the desired amound and sends any extra coins to the caller
     // vector total value - coin desired value
     let coin = handle_coin_vector(vector_lp_coin, coin_amount_in, ctx);
     let sender = tx_context::sender(ctx);
