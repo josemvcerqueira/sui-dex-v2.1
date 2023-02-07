@@ -452,7 +452,7 @@ public fun two_hop_swap<X, Y, B1, B2>(
     
     // Repay the extra amount
     if (coin_x_value > optimal_x_amount) pay::split_and_transfer(&mut coin_x, coin_x_value - optimal_x_amount, tx_context::sender(ctx), ctx);
-    if (coin_y_value > optimal_y_amount) pay::split_and_transfer(&mut coin_x, coin_y_value - optimal_y_amount, tx_context::sender(ctx), ctx);
+    if (coin_y_value > optimal_y_amount) pay::split_and_transfer(&mut coin_y, coin_y_value - optimal_y_amount, tx_context::sender(ctx), ctx);
 
     // Add liquidity
     volatile::add_liquidity(
@@ -496,7 +496,7 @@ public fun two_hop_swap<X, Y, B1, B2>(
     
     // Repay the extra amount
     if (coin_x_value > optimal_x_amount) pay::split_and_transfer(&mut coin_x, coin_x_value - optimal_x_amount, tx_context::sender(ctx), ctx);
-    if (coin_y_value > optimal_y_amount) pay::split_and_transfer(&mut coin_x, coin_y_value - optimal_y_amount, tx_context::sender(ctx), ctx);
+    if (coin_y_value > optimal_y_amount) pay::split_and_transfer(&mut coin_y, coin_y_value - optimal_y_amount, tx_context::sender(ctx), ctx);
 
     // Add liquidity
     stable::add_liquidity(
@@ -572,13 +572,10 @@ public fun two_hop_swap<X, Y, B1, B2>(
     if (reserve_x == 0 && reserve_y == 0) return (desired_amount_x, desired_amount_y);
 
     let optimal_y_amount = utils::quote_liquidity(desired_amount_x, reserve_x, reserve_y);
+    if (desired_amount_y > optimal_y_amount) return (desired_amount_x, optimal_y_amount);
 
-    if (desired_amount_y > optimal_y_amount) {
-      (desired_amount_x, optimal_y_amount)
-    } else {
-      let optimal_x_amount = utils::quote_liquidity(desired_amount_y, reserve_y, reserve_x);
-      (optimal_x_amount, desired_amount_y)
-    }
+    let optimal_x_amount = utils::quote_liquidity(desired_amount_y, reserve_y, reserve_x);
+    (optimal_x_amount, desired_amount_y)
   }
 }
 
