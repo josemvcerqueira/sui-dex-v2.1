@@ -416,10 +416,7 @@ public fun two_hop_swap<X, Y, B1, B2>(
       }
     }
   }
-  // reserve_x: u64,
-  //   reserve_y: u64,
-  //   desired_amount_x: u64,
-  //   desired_amount_y: u64
+
   /**
   * @notice This function calculates the right ratio to add liquidity to prevent loss to the caller and adds liquidity to volatile Pool<X, Y>
   * It will return any extra coin_x sent
