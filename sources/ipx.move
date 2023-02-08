@@ -182,11 +182,24 @@ module ipx::ipx {
   token: Coin<T>,
   ctx: &mut TxContext
  ): Coin<IPX> {
-
   update_pool<T>(storage, ctx);
+  let sender = tx_context::sender(ctx);
+
+   if (!bag::contains<address>(table::borrow(&accounts_storage.accounts, get_pool_key<T>(storage)), sender)) {
+    bag::add(
+      table::borrow_mut(&mut accounts_storage.accounts, get_pool_key<T>(storage)),
+      sender,
+      Account<T> {
+        id: object::new(ctx),
+        balance: balance::zero<T>(),
+        rewards_paid: 0
+      }
+    );
+  };
+
   let key = get_pool_key<T>(storage);
   let pool = borrow_mut_pool<T>(storage);
-  let account = borrow_mut_account<T>(accounts_storage, key, tx_context::sender(ctx));
+  let account = borrow_mut_account<T>(accounts_storage, key, sender);
 
   let pending_rewards = 0;
   
@@ -232,7 +245,7 @@ module ipx::ipx {
 
   let staked_coin = coin::take(&mut account.balance, coin_value, ctx);
   pool.balance_value = pool.balance_value - coin_value;
-  account.rewards_paid = (balance::value(&account.balance) as u256) * pool.accrued_ipx_per_share;
+  account.rewards_paid = (balance::value(&account.balance) as u256) * pool.accrued_ipx_per_share / scalar();
 
   event::emit(
     Unstake<T> {
@@ -329,20 +342,8 @@ fun borrow_pool<T>(storage: &IPXStorage): &Pool {
   bag::borrow(table::borrow(&accounts_storage.accounts, get_pool_key<T>(storage)), sender)
  }
 
-fun borrow_mut_account<T>(accounts_storage: &mut AccountStorage, key: u64, sender: address, ctx: &mut TxContext): &mut Account<T> {
-  let accounts_table = table::borrow_mut<u64, Bag>(&mut accounts_storage.accounts, key);
-  if (!bag::contains<address>(accounts_table, sender)) {
-    bag::add(
-      accounts_table,
-      sender,
-      Account<T> {
-        id: object::new(ctx),
-        balance: balance::zero<T>(),
-        rewards_paid: 0
-      }
-    );
-  };
-  bag::borrow_mut<address, Account<T>>(accounts_table, sender)
+fun borrow_mut_account<T>(accounts_storage: &mut AccountStorage, key: u64, sender: address): &mut Account<T> {
+  bag::borrow_mut(table::borrow_mut(&mut accounts_storage.accounts, key), sender)
  }
 
  entry public fun update_ipx_per_epoch(
