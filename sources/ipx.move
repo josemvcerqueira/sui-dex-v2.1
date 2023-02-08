@@ -12,15 +12,15 @@ module ipx::ipx {
   use sui::event;
 
   use ipx::utils::{get_coin_info};
-  use ipx::math::{scalar};
 
   struct IPX has drop {}
 
-  const IPX_PER_EPOCH: u64 = 100000000000; // 100e9 IPX
+  const IPX_PER_EPOCH: u64 = 100000000000; // 100e9 IPX | 100 IPX per epoch
 
   const ERROR_POOL_ADDED_ALREADY: u64 = 1;
   const ERROR_ACCOUNT_BAG_ADDED_ALREADY: u64 = 2;
   const ERROR_NOT_ENOUGH_BALANCE: u64 = 3;
+  const ERROR_NO_PENDING_REWARDS: u64 = 4;
 
   struct IPXStorage has key {
     id: UID,
@@ -173,7 +173,7 @@ module ipx::ipx {
     if (current_epoch > pool.last_reward_epoch) {
       let epochs_delta = ((current_epoch - pool.last_reward_epoch) as u256);
       let rewards = (epochs_delta * (storage.ipx_per_epoch as u256)) * (pool.allocation_points as u256) / (storage.total_allocation_points as u256);
-      accrued_ipx_per_share = accrued_ipx_per_share + (rewards * scalar() / (pool.balance_value as u256));
+      accrued_ipx_per_share = accrued_ipx_per_share + (rewards / (pool.balance_value as u256));
     };
 
     return (account_balance_value * accrued_ipx_per_share) - account.rewards_paid
@@ -248,7 +248,7 @@ module ipx::ipx {
 
   let staked_coin = coin::take(&mut account.balance, coin_value, ctx);
   pool.balance_value = pool.balance_value - coin_value;
-  account.rewards_paid = (balance::value(&account.balance) as u256) * pool.accrued_ipx_per_share / scalar();
+  account.rewards_paid = (balance::value(&account.balance) as u256) * pool.accrued_ipx_per_share;
 
   event::emit(
     Unstake<T> {
@@ -264,6 +264,28 @@ module ipx::ipx {
     staked_coin
   )
  } 
+
+ public fun get_rewards<T>(
+  storage: &mut IPXStorage, 
+  accounts_storage: &mut AccountStorage,
+  ctx: &mut TxContext
+ ): Coin<IPX> {
+   update_pool<T>(storage, ctx);
+  
+  let key = get_pool_key<T>(storage);
+  let pool = borrow_pool<T>(storage);
+  let account = borrow_mut_account<T>(accounts_storage, key, tx_context::sender(ctx));
+  
+  let account_balance_value = (balance::value(&account.balance) as u256);
+
+  let pending_rewards = (account_balance_value * pool.accrued_ipx_per_share) - account.rewards_paid;
+
+  assert!(pending_rewards != 0, ERROR_NO_PENDING_REWARDS);
+
+  account.rewards_paid = account_balance_value * pool.accrued_ipx_per_share;
+
+  coin::from_balance(balance::increase_supply(&mut storage.supply, (pending_rewards as u64)), ctx)
+ }
 
  public fun update_all_pools(storage: &mut IPXStorage, ctx: &mut TxContext) {
   let length = table::length(&storage.pools);
@@ -309,7 +331,7 @@ module ipx::ipx {
 
   let rewards = ((pool.allocation_points as u256) * (epochs_delta as u256) * (ipx_per_epoch as u256) / (total_allocation_points as u256));
 
-  pool.accrued_ipx_per_share = pool.accrued_ipx_per_share + (rewards * scalar() / (pool.balance_value as u256));
+  pool.accrued_ipx_per_share = pool.accrued_ipx_per_share + (rewards / (pool.balance_value as u256));
  }
 
  fun update_ipx_pool(storage: &mut IPXStorage) {
