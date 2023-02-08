@@ -156,6 +156,9 @@ module ipx::ipx {
   accounts_storage: &AccountStorage,
   ctx: &mut TxContext
   ): u256 {
+
+    if ((!bag::contains<address>(table::borrow(&accounts_storage.accounts, get_pool_key<T>(storage)), tx_context::sender(ctx)))) return 0;
+
     let pool = borrow_pool<T>(storage);
     let account = borrow_account<T>(storage, accounts_storage, tx_context::sender(ctx));
 
@@ -217,7 +220,7 @@ module ipx::ipx {
     Stake<T> {
       pool_key: key,
       amount: token_value,
-      sender: tx_context::sender(ctx),
+      sender,
       rewards: (pending_rewards as u64)
     }
   );
