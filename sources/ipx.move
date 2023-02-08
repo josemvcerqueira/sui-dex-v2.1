@@ -329,8 +329,20 @@ fun borrow_pool<T>(storage: &IPXStorage): &Pool {
   bag::borrow(table::borrow(&accounts_storage.accounts, get_pool_key<T>(storage)), sender)
  }
 
-fun borrow_mut_account<T>(accounts_storage: &mut AccountStorage, key: u64, sender: address): &mut Account<T> {
-  bag::borrow_mut(table::borrow_mut(&mut accounts_storage.accounts, key), sender)
+fun borrow_mut_account<T>(accounts_storage: &mut AccountStorage, key: u64, sender: address, ctx: &mut TxContext): &mut Account<T> {
+  let accounts_table = table::borrow_mut<u64, Bag>(&mut accounts_storage.accounts, key);
+  if (!bag::contains<address>(accounts_table, sender)) {
+    bag::add(
+      accounts_table,
+      sender,
+      Account<T> {
+        id: object::new(ctx),
+        balance: balance::zero<T>(),
+        rewards_paid: 0
+      }
+    );
+  };
+  bag::borrow_mut<address, Account<T>>(accounts_table, sender)
  }
 
  entry public fun update_ipx_per_epoch(
