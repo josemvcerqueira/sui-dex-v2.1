@@ -1,4 +1,6 @@
 module ipx::math {
+  
+  const SCALAR: u256 = 1000000000;
 
   public fun mul_div(x: u64, y: u64, z: u64): u64 {
     ((x as u256) * (y as u256) / (z as u256) as u64)
@@ -17,5 +19,9 @@ module ipx::math {
             z = 1;
         };
         z
-    }
+}
+
+public fun scalar(): u256 {
+    SCALAR
+}
 }
