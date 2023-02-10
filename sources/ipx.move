@@ -15,6 +15,7 @@ module ipx::ipx {
 
   struct IPX has drop {}
 
+  const START_EPOCH: u64 = 4; // TODO needs to be updated based on real time before mainnet
   const IPX_PER_EPOCH: u64 = 100000000000; // 100e9 IPX | 100 IPX per epoch
 
   const ERROR_POOL_ADDED_ALREADY: u64 = 1;
@@ -91,9 +92,9 @@ module ipx::ipx {
     admin: address
   }
 
-  fun init(ctx: &mut TxContext, start_epoch: u64) {
-      let (treasury, metadata) = coin::create_currency(
-            IPX {}, 
+  fun init(witness: IPX, ctx: &mut TxContext) {
+      let (treasury, metadata) = coin::create_currency<IPX>(
+            witness, 
             9,
             b"IPX",
             b"Interest Protocol Token",
@@ -135,9 +136,9 @@ module ipx::ipx {
           supply: coin::treasury_into_supply(treasury),
           pools,
           ipx_per_epoch: IPX_PER_EPOCH,
-          total_allocation_points: 0,
+          total_allocation_points: 1000,
           pool_keys,
-          start_epoch
+          start_epoch: START_EPOCH
         }
       );
 
@@ -478,4 +479,37 @@ fun borrow_mut_account<T>(accounts_storage: &mut AccountStorage, key: u64, sende
   transfer::transfer(admin, recipient);
   event::emit(NewAdmin { admin: recipient })
  }
+
+  #[test_only]
+  public fun init_for_testing(ctx: &mut TxContext) {
+    init(IPX {}, ctx);
+  }
+
+  public fun get_account_info<T>(storage: &IPXStorage, accounts_storage: &AccountStorage, sender: address): (u64, u256) {
+    let account = bag::borrow<address, Account<T>>(table::borrow(&accounts_storage.accounts, get_pool_key<T>(storage)), sender);
+    (
+      balance::value(&account.balance),
+      account.rewards_paid
+    )
+  }
+
+  public fun get_pool_info<T>(storage: &IPXStorage): (u64, u64, u256, u64) {
+    let key = get_pool_key<T>(storage);
+    let pool = table::borrow(&storage.pools, key);
+    (
+      pool.allocation_points,
+      pool.last_reward_epoch,
+      pool.accrued_ipx_per_share,
+      pool.balance_value
+    )
+  }
+
+  public fun get_ipx_storage_info(storage: &IPXStorage): (u64, u64, u64, u64) {
+    (
+      balance::supply_value(&storage.supply),
+      storage.ipx_per_epoch,
+      storage.total_allocation_points,
+      storage.start_epoch
+    )
+  }
 }
