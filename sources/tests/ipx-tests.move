@@ -74,10 +74,43 @@ module ipx::ipx_tests {
     };
   }
 
-    #[test]
+  #[test]
   fun test_init() {
     let scenario = scenario();
     test_init_(&mut scenario);
+    test::end(scenario);
+  }
+
+  fun test_add_pool_(test: &mut Scenario) {
+    let (alice, _) = people();
+
+    register_token(test);
+
+    next_tx(test, alice);
+    {
+      let ipx_storage = test::take_shared<IPXStorage>(test);
+
+      let (lp_coin_allocation_points, last_reward_epoch, accrued_ipx_per_share, balance) = ipx::get_pool_info<LPCoin>(&ipx_storage);
+      let (ipx_allocation_points, _, _, _) = ipx::get_pool_info<IPX>(&ipx_storage);
+      let (_, _, total_allocation_points, _) = ipx::get_ipx_storage_info(&ipx_storage);
+
+      let ipx_allocation = LPCOIN_ALLOCATION_POINTS / 3;
+
+      assert!(lp_coin_allocation_points == LPCOIN_ALLOCATION_POINTS, 0);
+      assert!(last_reward_epoch == START_EPOCH, 0);
+      assert!(accrued_ipx_per_share == 0, 0);
+      assert!(balance == 0, 0);
+      assert!(ipx_allocation_points == ipx_allocation, 0);
+      assert!(total_allocation_points == LPCOIN_ALLOCATION_POINTS + ipx_allocation, 0);
+
+      test::return_shared(ipx_storage);
+    };
+  }
+
+  #[test]
+  fun test_add_pool() {
+    let scenario = scenario();
+    test_add_pool_(&mut scenario);
     test::end(scenario);
   }
 
