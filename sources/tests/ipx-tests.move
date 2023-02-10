@@ -142,6 +142,44 @@ module ipx::ipx_tests {
     test::end(scenario);
   }
 
+  fun test_set_allocation_points_(test: &mut Scenario) {
+    let (owner, _) = people();
+
+    register_token(test);
+
+    next_tx(test, owner);
+    {
+      let ipx_storage = test::take_shared<IPXStorage>(test);
+      let admin_cap = test::take_from_sender<IPXAdmin>(test);
+      let new_lo_coin_allocation_points = 400;
+
+      ipx::set_allocation_points<LPCoin>(&admin_cap, &mut ipx_storage, new_lo_coin_allocation_points, false, ctx(test));
+
+      let (lp_coin_allocation_points, last_reward_epoch, accrued_ipx_per_share, balance) = ipx::get_pool_info<LPCoin>(&ipx_storage);
+      let (ipx_allocation_points, _, _, _) = ipx::get_pool_info<IPX>(&ipx_storage);
+      let (_, _, total_allocation_points, _) = ipx::get_ipx_storage_info(&ipx_storage);
+
+      let ipx_allocation = new_lo_coin_allocation_points / 3;
+
+      assert!(lp_coin_allocation_points == new_lo_coin_allocation_points, 0);
+      assert!(last_reward_epoch == START_EPOCH, 0);
+      assert!(accrued_ipx_per_share == 0, 0);
+      assert!(balance == 0, 0);
+      assert!(ipx_allocation_points == ipx_allocation, 0);
+      assert!(total_allocation_points == new_lo_coin_allocation_points + ipx_allocation, 0);
+
+      test::return_shared(ipx_storage);
+      test::return_to_sender(test, admin_cap);
+    };    
+  }
+
+  #[test]
+  fun test_set_allocation_points() {
+    let scenario = scenario();
+    test_set_allocation_points_(&mut scenario);
+    test::end(scenario);
+  }
+
   fun register_token(test: &mut Scenario) {
     let (owner, _) = people();
 
