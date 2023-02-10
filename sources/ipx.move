@@ -296,10 +296,11 @@ module ipx::ipx {
   while (index < length) {
     let ipx_per_epoch = storage.ipx_per_epoch;
     let total_allocation_points = storage.total_allocation_points;
+    let start_epoch = storage.start_epoch;
 
     let pool = table::borrow_mut(&mut storage.pools, index);
 
-    update_pool_internal(pool, ipx_per_epoch, total_allocation_points, ctx);
+    update_pool_internal(pool, ipx_per_epoch, total_allocation_points, start_epoch, ctx);
 
     index = index + 1;
   }
@@ -308,21 +309,25 @@ module ipx::ipx {
  public fun update_pool<T>(storage: &mut IPXStorage, ctx: &mut TxContext) {
   let ipx_per_epoch = storage.ipx_per_epoch;
   let total_allocation_points = storage.total_allocation_points;
+  let start_epoch = storage.start_epoch;
 
   let pool = borrow_mut_pool<T>(storage);
 
-  update_pool_internal(pool, ipx_per_epoch, total_allocation_points, ctx);
+  update_pool_internal(pool, ipx_per_epoch, total_allocation_points, start_epoch, ctx);
  }
 
  fun update_pool_internal(
   pool: &mut Pool, 
   ipx_per_epoch: u64, 
   total_allocation_points: u64,
+  start_epoch: u64,
   ctx: &mut TxContext
   ) {
   if (pool.allocation_points == 0 || pool.balance_value == 0) return;
 
   let current_epoch = tx_context::epoch(ctx);
+
+  if (start_epoch > current_epoch) return;
 
   if (current_epoch == pool.last_reward_epoch) return;
 
