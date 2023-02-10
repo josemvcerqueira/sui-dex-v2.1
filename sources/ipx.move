@@ -485,11 +485,6 @@ fun borrow_mut_account<T>(accounts_storage: &mut AccountStorage, key: u64, sende
   event::emit(NewAdmin { admin: recipient })
  }
 
-  #[test_only]
-  public fun init_for_testing(ctx: &mut TxContext) {
-    init(IPX {}, ctx);
-  }
-
   public fun get_account_info<T>(storage: &IPXStorage, accounts_storage: &AccountStorage, sender: address): (u64, u256) {
     let account = bag::borrow<address, Account<T>>(table::borrow(&accounts_storage.accounts, get_pool_key<T>(storage)), sender);
     (
@@ -516,5 +511,10 @@ fun borrow_mut_account<T>(accounts_storage: &mut AccountStorage, key: u64, sende
       storage.total_allocation_points,
       storage.start_epoch
     )
+  }
+  
+  #[test_only]
+  public fun init_for_testing(ctx: &mut TxContext) {
+    init(IPX {}, ctx);
   }
 }

@@ -114,6 +114,34 @@ module ipx::ipx_tests {
     test::end(scenario);
   }
 
+  fun test_update_ipx_per_epoch_(test: &mut Scenario) {
+    let (alice, _) = people();
+
+    register_token(test);
+
+    next_tx(test, alice);
+    {
+      let ipx_storage = test::take_shared<IPXStorage>(test);
+      let admin_cap = test::take_from_sender<IPXAdmin>(test);
+
+      ipx::update_ipx_per_epoch(&admin_cap, &mut ipx_storage, 300, ctx(test));
+
+      let (_, ipx_per_epoch, _, _) = ipx::get_ipx_storage_info(&ipx_storage);
+
+      assert!(ipx_per_epoch == 300, 0);
+
+      test::return_shared(ipx_storage);
+      test::return_to_sender(test, admin_cap);
+    };
+  }
+
+  #[test]
+  fun test_update_ipx_per_epoch() {
+    let scenario = scenario();
+    test_update_ipx_per_epoch_(&mut scenario);
+    test::end(scenario);
+  }
+
   fun register_token(test: &mut Scenario) {
     let (owner, _) = people();
 
