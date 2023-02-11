@@ -12,7 +12,7 @@ module ipx::ipx_tests {
   const LPCOIN_ALLOCATION_POINTS: u64 = 500;
 
   struct LPCoin {}
-  struct LpCoin2 {}
+  struct LPCoin2 {}
 
   fun test_stake_(test: &mut Scenario) {
     let (alice, _) = people();
@@ -225,6 +225,67 @@ module ipx::ipx_tests {
   fun test_update_pool() {
     let scenario = scenario();
     test_update_pool_(&mut scenario);
+    test::end(scenario);
+  }
+
+  fun test_update_pools_(test: &mut Scenario) {
+    let (alice, _) = people();
+     
+     // Register first token
+     register_token(test);
+     
+     // Register second token
+     next_tx(test, alice);
+     {
+      let ipx_storage = test::take_shared<IPXStorage>(test);
+      let admin_cap = test::take_from_sender<IPXAdmin>(test);
+      let account_storage = test::take_shared<AccountStorage>(test);
+
+      ipx::add_pool<LPCoin2>(&admin_cap, &mut ipx_storage, &mut account_storage, 800, false, ctx(test));
+
+      test::return_shared(ipx_storage);
+      test::return_to_sender(test, admin_cap);
+      test::return_shared(account_storage);
+     };
+
+    let deposit_amount = 500;
+    next_tx(test, alice);
+    {
+      let ipx_storage = test::take_shared<IPXStorage>(test);
+      let account_storage = test::take_shared<AccountStorage>(test);
+
+      burn(ipx::stake<LPCoin>(&mut ipx_storage, &mut account_storage, mint<LPCoin>(deposit_amount, ctx(test)), ctx(test)));
+      burn(ipx::stake<LPCoin2>(&mut ipx_storage, &mut account_storage, mint<LPCoin2>(deposit_amount * 2, ctx(test)), ctx(test)));
+
+      test::return_shared(ipx_storage);
+      test::return_shared(account_storage);      
+    };
+
+    advance_epoch(test, alice, 10);
+    next_tx(test, alice);
+    {
+      let ipx_storage = test::take_shared<IPXStorage>(test);
+
+      ipx::update_pool<LPCoin>(&mut ipx_storage, ctx(test));
+      ipx::update_pool<LPCoin2>(&mut ipx_storage, ctx(test));
+
+      let (_, ipx_per_epoch, total_allocation_points, _) = ipx::get_ipx_storage_info(&ipx_storage);
+      let (lp_coin_pool_allocation, lp_coin_last_reward_epoch, lp_coin_accrued_ipx_per_share, _) = ipx::get_pool_info<LPCoin>(&ipx_storage);
+      let (lp_coin_2_pool_allocation, lp_coin_2_last_reward_epoch, lp_coin_2_accrued_ipx_per_share, _) = ipx::get_pool_info<LPCoin2>(&ipx_storage);
+
+      assert!(lp_coin_last_reward_epoch == 10, 0);
+      assert!(lp_coin_2_last_reward_epoch == 10, 0);
+      assert!(lp_coin_accrued_ipx_per_share == (((lp_coin_pool_allocation * (10 - 4) * ipx_per_epoch  / total_allocation_points) / 500) as u256), 0);
+      assert!(lp_coin_2_accrued_ipx_per_share == (((lp_coin_2_pool_allocation * (10 - 4) * ipx_per_epoch  / total_allocation_points) / 1000) as u256), 0);
+
+      test::return_shared(ipx_storage);
+    }
+  }
+
+  #[test]
+  fun test_update_pools() {
+    let scenario = scenario();
+    test_update_pools_(&mut scenario);
     test::end(scenario);
   }
 
