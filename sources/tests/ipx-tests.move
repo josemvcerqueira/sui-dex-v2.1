@@ -68,10 +68,13 @@ module ipx::ipx_tests {
 
       let (_, rewards_paid) = ipx::get_account_info<LPCoin>(&ipx_storage, &account_storage, alice);
 
+      let pending_rewards = ipx::get_pending_rewards<LPCoin>(&ipx_storage, &account_storage, ctx(test));
+
       let coin_ipx = ipx::get_rewards<LPCoin>(&mut ipx_storage, &mut account_storage, ctx(test));
 
       let (_, last_reward_epoch, accrued_ipx_per_share, balance) = ipx::get_pool_info<LPCoin>(&ipx_storage);
       assert!((burn(coin_ipx) as u256) == (700 * accrued_ipx_per_share) - rewards_paid, 0);
+      assert!(pending_rewards == (700 * accrued_ipx_per_share) - rewards_paid, 0);
 
       let (user_balance, rewards_paid) = ipx::get_account_info<LPCoin>(&ipx_storage, &account_storage, alice);
 
