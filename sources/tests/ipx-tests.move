@@ -1,7 +1,7 @@
 #[test_only]
 module ipx::ipx_tests {
 
-  use sui::test_scenario::{Self as test, Scenario, next_tx, ctx};
+  use sui::test_scenario::{Self as test, Scenario, next_tx, ctx, next_epoch};
   use sui::coin::{Self, mint_for_testing as mint, destroy_for_testing as burn, CoinMetadata};
   use sui::tx_context;
 
@@ -12,6 +12,7 @@ module ipx::ipx_tests {
   const LPCOIN_ALLOCATION_POINTS: u64 = 500;
 
   struct LPCoin {}
+  struct LpCoin2 {}
 
   fun test_stake_(test: &mut Scenario) {
     let (alice, _) = people();
@@ -180,6 +181,53 @@ module ipx::ipx_tests {
     test::end(scenario);
   }
 
+  fun test_update_pool_(test: &mut Scenario) {
+    let (alice, _) = people();
+
+    register_token(test);
+
+    let deposit_amount = 500;
+    next_tx(test, alice);
+    {
+      let ipx_storage = test::take_shared<IPXStorage>(test);
+      let account_storage = test::take_shared<AccountStorage>(test);
+
+      burn(ipx::stake<LPCoin>(&mut ipx_storage, &mut account_storage, mint<LPCoin>(deposit_amount, ctx(test)), ctx(test)));
+
+      test::return_shared(ipx_storage);
+      test::return_shared(account_storage);      
+    };
+
+    advance_epoch(test, alice, 8);
+    next_tx(test, alice);
+    {
+      let ipx_storage = test::take_shared<IPXStorage>(test);
+
+      let (pool_allocation, last_reward_epoch, accrued_ipx_per_share, _) = ipx::get_pool_info<LPCoin>(&ipx_storage);
+      let (_, ipx_per_epoch, total_allocation_points, _) = ipx::get_ipx_storage_info(&ipx_storage);
+
+      assert!(last_reward_epoch == START_EPOCH, 0);
+      assert!(accrued_ipx_per_share == 0, 0);
+
+      ipx::update_pool<LPCoin>(&mut ipx_storage, ctx(test));
+
+      let (_, last_reward_epoch_2, accrued_ipx_per_share_2, _) = ipx::get_pool_info<LPCoin>(&ipx_storage);
+      let epoch2 = tx_context::epoch(ctx(test));
+
+      assert!(last_reward_epoch_2 == epoch2, 0);
+      assert!(accrued_ipx_per_share_2 == (((pool_allocation * (epoch2 - last_reward_epoch) * ipx_per_epoch  / total_allocation_points) / 500) as u256), 0);
+
+      test::return_shared(ipx_storage);
+    }
+  }
+
+  #[test]
+  fun test_update_pool() {
+    let scenario = scenario();
+    test_update_pool_(&mut scenario);
+    test::end(scenario);
+  }
+
   fun register_token(test: &mut Scenario) {
     let (owner, _) = people();
 
@@ -200,5 +248,14 @@ module ipx::ipx_tests {
       test::return_to_sender(test, admin_cap);
       test::return_shared(account_storage);
     };
+  }
+
+  fun advance_epoch(test: &mut Scenario, sender: address, num_of_epochs: u64) {
+    let index = 0;
+
+    while (index < num_of_epochs) {
+      next_epoch(test, sender);
+      index = index + 1;
+    }
   }
 }

@@ -327,13 +327,11 @@ module ipx::ipx {
 
   let current_epoch = tx_context::epoch(ctx);
 
-  if (start_epoch > current_epoch) return;
-
-  if (current_epoch == pool.last_reward_epoch) return;
-
-  pool.last_reward_epoch = current_epoch;
+  if (current_epoch == pool.last_reward_epoch || start_epoch > current_epoch) return;
 
   let epochs_delta = current_epoch - pool.last_reward_epoch;
+
+  pool.last_reward_epoch = current_epoch;
 
   let rewards = ((pool.allocation_points as u256) * (epochs_delta as u256) * (ipx_per_epoch as u256) / (total_allocation_points as u256));
 
