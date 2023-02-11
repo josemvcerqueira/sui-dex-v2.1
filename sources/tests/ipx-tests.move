@@ -63,7 +63,7 @@ module ipx::ipx_tests {
     advance_epoch(test, alice, 5);
     next_tx(test, alice);
     {
-       let ipx_storage = test::take_shared<IPXStorage>(test);
+      let ipx_storage = test::take_shared<IPXStorage>(test);
       let account_storage = test::take_shared<AccountStorage>(test);
 
       let (_, rewards_paid) = ipx::get_account_info<LPCoin>(&ipx_storage, &account_storage, alice);
@@ -93,6 +93,55 @@ module ipx::ipx_tests {
   fun test_stake() {
     let scenario = scenario();
     test_stake_(&mut scenario);
+    test::end(scenario);
+  }
+
+  fun test_unstake_(test: &mut Scenario) {
+    let (alice, _) = people();
+
+    register_token(test);
+
+    next_tx(test, alice);
+    {
+      let ipx_storage = test::take_shared<IPXStorage>(test);
+      let account_storage = test::take_shared<AccountStorage>(test);
+
+      burn(ipx::stake(&mut ipx_storage, &mut account_storage, mint<LPCoin>(500, ctx(test)), ctx(test)));
+
+      test::return_shared(ipx_storage);
+      test::return_shared(account_storage);
+    };
+
+    advance_epoch(test, alice, 6);
+    next_tx(test, alice);
+    {
+      let ipx_storage = test::take_shared<IPXStorage>(test);
+      let account_storage = test::take_shared<AccountStorage>(test);
+
+      let pending_rewards = ipx::get_pending_rewards<LPCoin>(&ipx_storage, &account_storage, ctx(test));
+
+      let (coin_ipx, lp_coin)= ipx::unstake<LPCoin>(&mut ipx_storage, &mut account_storage, 300, ctx(test));
+
+      let (_, last_reward_epoch, accrued_ipx_per_share, balance) = ipx::get_pool_info<LPCoin>(&ipx_storage);
+      let (user_balance, rewards_paid) = ipx::get_account_info<LPCoin>(&ipx_storage, &account_storage, alice);
+
+      assert!(burn(lp_coin) == 300, 0);
+      assert!((burn(coin_ipx) as u256) == (500 * accrued_ipx_per_share), 0);
+      assert!(pending_rewards == (500 * accrued_ipx_per_share), 0);
+      assert!(balance == 200, 0);
+      assert!(user_balance == 200, 0);
+      assert!(rewards_paid == 200 * accrued_ipx_per_share, 0);
+      assert!(last_reward_epoch == 6, 0);
+
+      test::return_shared(ipx_storage);
+      test::return_shared(account_storage);
+    };
+  }
+
+  #[test]
+  fun test_unstake() {
+    let scenario = scenario();
+    test_unstake_(&mut scenario);
     test::end(scenario);
   }
 
