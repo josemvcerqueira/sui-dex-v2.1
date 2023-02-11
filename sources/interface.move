@@ -6,6 +6,7 @@ module ipx::interface {
 
   use ipx::dex_volatile::{Self as volatile, Storage as VStorage, VLPCoin};
   use ipx::dex_stable::{Self as stable, Storage as SStorage, SLPCoin};
+  use ipx::ipx::{Self, IPXStorage, AccountStorage};
   use ipx::utils::{destroy_zero_or_transfer, handle_coin_vector, are_coins_sorted};
   use ipx::router;
 
@@ -335,5 +336,60 @@ module ipx::interface {
 
     transfer::transfer(coin_x, sender);
     transfer::transfer(coin_y, sender);
+  }
+
+  entry public fun stake<T>(
+    storage: &mut IPXStorage,
+    accounts_storage: &mut AccountStorage,
+    coin_vector: vector<Coin<T>>,
+    coin_amount: u64,
+    ctx: &mut TxContext
+  ) {
+    // Create a coin from the vector. It keeps the desired amound and sends any extra coins to the caller
+    // vector total value - coin desired value
+    let coin = handle_coin_vector(coin_vector, coin_amount, ctx);
+
+    transfer::transfer(
+      ipx::stake(
+        storage,
+        accounts_storage,
+        coin,
+        ctx
+      ),
+      tx_context::sender(ctx)
+    );
+  }
+
+  entry public fun unstake<T>(
+    storage: &mut IPXStorage,
+    accounts_storage: &mut AccountStorage,
+    coin_amount: u64,
+    ctx: &mut TxContext
+  ) {
+    let sender = tx_context::sender(ctx);
+    let (coin_ipx, coin) = ipx::unstake<T>(
+        storage,
+        accounts_storage,
+        coin_amount,
+        ctx
+    );
+    transfer::transfer(coin_ipx, sender);
+    transfer::transfer(coin, sender);
+  }
+
+  entry public fun get_rewards<T>(
+    storage: &mut IPXStorage,
+    accounts_storage: &mut AccountStorage,
+    ctx: &mut TxContext   
+  ) {
+    transfer::transfer(ipx::get_rewards<T>(storage, accounts_storage, ctx) ,tx_context::sender(ctx));
+  }
+
+  entry public fun update_pool<T>(storage: &mut IPXStorage, ctx: &mut TxContext) {
+    ipx::update_pool<T>(storage, ctx);
+  }
+
+  entry public fun update_all_pools(storage: &mut IPXStorage, ctx: &mut TxContext) {
+    ipx::update_all_pools(storage, ctx);
   }
 }
