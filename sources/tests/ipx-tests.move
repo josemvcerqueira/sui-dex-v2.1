@@ -26,7 +26,33 @@ module ipx::ipx_tests {
 
       let coin_ipx = ipx::stake(&mut ipx_storage, &mut account_storage, mint<LPCoin>(500, ctx(test)), ctx(test));
 
+      let (_, _, _, balance) = ipx::get_pool_info<LPCoin>(&ipx_storage);
+      let (user_balance, rewards_paid) = ipx::get_account_info<LPCoin>(&ipx_storage, &account_storage, alice);
+
       assert!(burn(coin_ipx) == 0, 0);
+      assert!(balance == 500, 0);
+      assert!(user_balance == 500, 0);
+      assert!(rewards_paid == 0, 0);
+
+      test::return_shared(ipx_storage);
+      test::return_shared(account_storage);
+    };
+
+    advance_epoch(test, alice, 7);
+    next_tx(test, alice);
+    {
+      let ipx_storage = test::take_shared<IPXStorage>(test);
+      let account_storage = test::take_shared<AccountStorage>(test);
+
+      let coin_ipx = ipx::stake(&mut ipx_storage, &mut account_storage, mint<LPCoin>(200, ctx(test)), ctx(test));
+
+      let (_, _, accrued_ipx_per_share, balance) = ipx::get_pool_info<LPCoin>(&ipx_storage);
+      let (user_balance, rewards_paid) = ipx::get_account_info<LPCoin>(&ipx_storage, &account_storage, alice);
+
+      assert!((burn(coin_ipx) as u256) == (500 * accrued_ipx_per_share), 0);
+      assert!(balance == 700, 0);
+      assert!(user_balance == 700, 0);
+      assert!(rewards_paid == 700 * accrued_ipx_per_share, 0);
 
       test::return_shared(ipx_storage);
       test::return_shared(account_storage);
