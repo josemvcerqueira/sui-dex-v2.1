@@ -525,4 +525,9 @@ fun borrow_mut_account<T>(accounts_storage: &mut AccountStorage, key: u64, sende
   public fun init_for_testing(ctx: &mut TxContext) {
     init(IPX {}, ctx);
   }
+
+  #[test_only]
+  public fun get_ipx_pre_mint_amount(): u64 {
+    IPX_PRE_MINT_AMOUNT
+  }
 }
