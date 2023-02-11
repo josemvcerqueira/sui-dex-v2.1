@@ -165,7 +165,7 @@ module ipx::ipx_tests {
       let (allocation_points, last_reward_epoch, accrued_ipx_per_share, balance) = ipx::get_pool_info<IPX>(&ipx_storage);
 
       assert!(decimals == 9, 0);
-      assert!(supply == 0, 0);
+      assert!(supply == 600000000000000000, 0);
       assert!(ipx_per_epoch == 100000000000, 0);
       assert!(total_allocation_points == 1000, 0);
       assert!(start_epoch == 4, 0);

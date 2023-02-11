@@ -17,6 +17,8 @@ module ipx::ipx {
 
   const START_EPOCH: u64 = 4; // TODO needs to be updated based on real time before mainnet
   const IPX_PER_EPOCH: u64 = 100000000000; // 100e9 IPX | 100 IPX per epoch
+  const IPX_PRE_MINT_AMOUNT: u64 = 600000000000000000; // 600M 60% of the supply
+  const DEV: address = @dev;
 
   const ERROR_POOL_ADDED_ALREADY: u64 = 1;
   const ERROR_ACCOUNT_BAG_ADDED_ALREADY: u64 = 2;
@@ -128,12 +130,20 @@ module ipx::ipx {
         }
       );
 
-      
+      let supply = coin::treasury_into_supply(treasury);
+
+      transfer::transfer(
+        coin::from_balance(
+          balance::increase_supply(&mut supply, IPX_PRE_MINT_AMOUNT), ctx
+        ),
+        DEV
+      );
+
       transfer::freeze_object(metadata);
       transfer::share_object(
         IPXStorage {
           id: object::new(ctx),
-          supply: coin::treasury_into_supply(treasury),
+          supply,
           pools,
           ipx_per_epoch: IPX_PER_EPOCH,
           total_allocation_points: 1000,
