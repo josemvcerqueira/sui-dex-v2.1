@@ -1,7 +1,7 @@
 module ipx::ipx {
   use std::option;
 
-  use sui::object::{Self,UID};
+  use sui::object::{Self, UID};
   use sui::tx_context::{Self, TxContext};
   use sui::balance::{Self, Supply, Balance};
   use sui::bag::{Self, Bag};
@@ -324,6 +324,10 @@ module ipx::ipx {
   let pool = borrow_mut_pool<T>(storage);
 
   update_pool_internal(pool, ipx_per_epoch, total_allocation_points, start_epoch, ctx);
+ }
+
+ public fun burn_ipx(storage: &mut IPXStorage, coin: Coin<IPX>): u64 {
+    balance::decrease_supply(&mut storage.supply, coin::into_balance(coin))
  }
 
  fun update_pool_internal(
