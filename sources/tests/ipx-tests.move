@@ -170,7 +170,7 @@ module ipx::ipx_tests {
       assert!(total_allocation_points == 1000, 0);
       assert!(start_epoch == 4, 0);
       assert!(allocation_points == 1000, 0);
-      assert!(last_reward_epoch == tx_context::epoch(ctx(test)), 0);
+      assert!(last_reward_epoch == START_EPOCH, 0);
       assert!(accrued_ipx_per_share == 0, 0);
       assert!(balance == 0, 0);
 
