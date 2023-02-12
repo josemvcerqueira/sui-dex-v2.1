@@ -519,6 +519,7 @@ module ipx::dex_volatile {
    * @param storage the object that stores the pools Bag 
    * @param amount_x The amount of Coin<X> the caller wishes to borrow
    * @param amount_y The amount of Coin<Y> the caller wishes to borrow
+   * @return Receipt<X, Y>, Coin<X>, Coin<Y>
    * Requirements: 
    * - The caller must call the fn repay_flash_loan before the execution ends
    */ 
@@ -579,6 +580,10 @@ module ipx::dex_volatile {
       coin::put(&mut pool.balance_y, coin_y);
     }
 
+    /**
+    * @dev It returns the flash loan fee percentage along with the precision
+    * @return fee, precision
+    */
     public fun get_flash_loan_fee_percent(): (u256, u256) {
       (FLASH_LOAN_FEE_PERCENT, PRECISION)
     }  
