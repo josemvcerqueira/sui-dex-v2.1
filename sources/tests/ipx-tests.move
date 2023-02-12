@@ -68,7 +68,7 @@ module ipx::ipx_tests {
 
       let (_, rewards_paid) = ipx::get_account_info<LPCoin>(&ipx_storage, &account_storage, alice);
 
-      let pending_rewards = ipx::get_pending_rewards<LPCoin>(&ipx_storage, &account_storage, ctx(test));
+      let pending_rewards = ipx::get_pending_rewards<LPCoin>(&ipx_storage, &account_storage, alice, ctx(test));
 
       let coin_ipx = ipx::get_rewards<LPCoin>(&mut ipx_storage, &mut account_storage, ctx(test));
 
@@ -118,7 +118,7 @@ module ipx::ipx_tests {
       let ipx_storage = test::take_shared<IPXStorage>(test);
       let account_storage = test::take_shared<AccountStorage>(test);
 
-      let pending_rewards = ipx::get_pending_rewards<LPCoin>(&ipx_storage, &account_storage, ctx(test));
+      let pending_rewards = ipx::get_pending_rewards<LPCoin>(&ipx_storage, &account_storage, alice, ctx(test));
 
       let (coin_ipx, lp_coin)= ipx::unstake<LPCoin>(&mut ipx_storage, &mut account_storage, 300, ctx(test));
 
