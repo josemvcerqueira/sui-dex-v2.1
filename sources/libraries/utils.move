@@ -1,6 +1,6 @@
 module ipx::utils {
   use std::type_name::{Self};
-  use std::string::{Self, String}; 
+  use std::ascii::{String};
   use std::ascii;
   use std::vector;
 
@@ -35,6 +35,10 @@ module ipx::utils {
        ascii::into_bytes(name)
     }
 
+    public fun get_coin_info_string<T>(): String {
+      type_name::into_string(type_name::get<T>())
+    }
+
     fun compare_struct<X,Y>(): u8 {
         let struct_x_bytes: vector<u8> = get_coin_info<X>();
         let struct_y_bytes: vector<u8> = get_coin_info<Y>();
@@ -51,30 +55,6 @@ module ipx::utils {
         let compare_x_y: u8 = compare_struct<X, Y>();
         assert!(compare_x_y != get_equal_enum(), ERROR_SAME_COIN);
         (compare_x_y == get_smaller_enum())
-    }
-
-    public fun get_v_lp_coin_name<X, Y>(): String {
-      assert!(are_coins_sorted<X, Y>(), ERROR_UNSORTED_COINS);
-      
-      let lp_name = string::utf8(b"v-");
-
-      string::append_utf8(&mut lp_name, ascii::into_bytes(type_name::into_string(type_name::get<X>())));
-      string::append_utf8(&mut lp_name, b"-");
-      string::append_utf8(&mut lp_name, ascii::into_bytes(type_name::into_string(type_name::get<Y>())));
-      
-      lp_name
-    }
-
-    public fun get_s_lp_coin_name<X, Y>(): String {
-      assert!(are_coins_sorted<X, Y>(), ERROR_UNSORTED_COINS);
-      
-      let lp_name = string::utf8(b"s-");
-
-      string::append_utf8(&mut lp_name, ascii::into_bytes(type_name::into_string(type_name::get<X>())));
-      string::append_utf8(&mut lp_name, b"-");
-      string::append_utf8(&mut lp_name, ascii::into_bytes(type_name::into_string(type_name::get<Y>())));
-      
-      lp_name
     }
 
   public  fun handle_coin_vector<X>(

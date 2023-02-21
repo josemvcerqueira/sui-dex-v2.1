@@ -1,6 +1,6 @@
 module ipx::dex_volatile {
 
-  use std::string::{String}; 
+  use std::ascii::{String}; 
 
   use sui::tx_context::{Self, TxContext};
   use sui::coin::{Self, Coin};
@@ -35,6 +35,7 @@ module ipx::dex_volatile {
   const ERROR_WRONG_POOL: u64 = 11;
   const ERROR_WRONG_REPAY_AMOUNT_X: u64 = 12;
   const ERROR_WRONG_REPAY_AMOUNT_Y: u64 = 13;
+  const ERROR_UNSORTED_COINS: u64 = 14;
 
     struct AdminCap has key {
       id: UID,
@@ -152,13 +153,14 @@ module ipx::dex_volatile {
 
       // Ensure that the both coins have a value greater than 0.
       assert!(coin_x_value != 0 && coin_y_value != 0, ERROR_CREATE_PAIR_ZERO_VALUE);
+      assert!(utils::are_coins_sorted<X, Y>(), ERROR_UNSORTED_COINS);
 
       // Construct the name of the VLPCoin, which will be used as a key to store the pool data.
       // This fn will throw if X and Y are not sorted.
-      let lp_coin_name = utils::get_v_lp_coin_name<X, Y>();
+      let type = utils::get_coin_info_string<VLPCoin<X, Y>>();
 
       // Checks that the pool does not exist.
-      assert!(!bag::contains(&storage.pools, lp_coin_name), ERROR_POOL_EXISTS);
+      assert!(!bag::contains(&storage.pools, type), ERROR_POOL_EXISTS);
 
       // Calculate the constant product k = x * y
       let _k = k(coin_x_value, coin_y_value) - (MINIMUM_LIQUIDITY as u256);
@@ -191,7 +193,7 @@ module ipx::dex_volatile {
       // Store the new pool in Storage.pools
       bag::add(
         &mut storage.pools,
-        lp_coin_name,
+        type,
         VPool {
           id: pool_id,
           k_last: _k,
@@ -354,9 +356,8 @@ module ipx::dex_volatile {
     * - Coins X and Y must be sorted.
     */
     public fun borrow_pool<X, Y>(storage: &Storage): &VPool<X, Y> {
-      bag::borrow<String, VPool<X, Y>>(&storage.pools, utils::get_v_lp_coin_name<X, Y>())
+      bag::borrow<String, VPool<X, Y>>(&storage.pools, utils::get_coin_info_string<VLPCoin<X, Y>>())
     }
-
 
     /**
     * @dev It indicates to the caller if Pool<X, Y> has been deployed. 
@@ -366,7 +367,7 @@ module ipx::dex_volatile {
     * - Coins X and Y must be sorted.
     */
     public fun is_pool_deployed<X, Y>(storage: &Storage):bool {
-      bag::contains(&storage.pools, utils::get_v_lp_coin_name<X, Y>())
+      bag::contains(&storage.pools, utils::get_coin_info_string<VLPCoin<X, Y>>())
     }
 
     /**
@@ -608,7 +609,7 @@ module ipx::dex_volatile {
     * - Coins X and Y must be sorted.
     */
     fun borrow_mut_pool<X, Y>(storage: &mut Storage): &mut VPool<X, Y> {
-        bag::borrow_mut<String, VPool<X, Y>>(&mut storage.pools, utils::get_v_lp_coin_name<X, Y>())
+        bag::borrow_mut<String, VPool<X, Y>>(&mut storage.pools, utils::get_coin_info_string<VLPCoin<X, Y>>())
       }   
 
     /**

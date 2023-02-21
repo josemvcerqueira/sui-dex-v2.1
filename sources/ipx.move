@@ -1,5 +1,6 @@
 module ipx::ipx {
   use std::option;
+  use std::ascii::{String};
 
   use sui::object::{Self, UID};
   use sui::tx_context::{Self, TxContext};
@@ -11,7 +12,7 @@ module ipx::ipx {
   use sui::url;
   use sui::event;
 
-  use ipx::utils::{get_coin_info};
+  use ipx::utils::{get_coin_info_string};
 
   struct IPX has drop {}
 
@@ -30,7 +31,7 @@ module ipx::ipx {
     supply: Supply<IPX>,
     ipx_per_epoch: u64,
     total_allocation_points: u64,
-    pool_keys: Table<vector<u8>, PoolKey>,
+    pool_keys: Table<String, PoolKey>,
     pools: Table<u64, Pool>,
     start_epoch: u64
   }
@@ -108,13 +109,15 @@ module ipx::ipx {
 
       // Set up tables for the storage objects 
       let pools = table::new<u64, Pool>(ctx);  
-      let pool_keys = table::new<vector<u8>, PoolKey>(ctx);
+      let pool_keys = table::new<String, PoolKey>(ctx);
       let accounts = table::new<u64, Bag>(ctx);
+
+      let coin_info_string = get_coin_info_string<IPX>();
       
       // Register the IPX farm in pool_keys
       table::add(
         &mut pool_keys, 
-        get_coin_info<IPX>(), 
+        coin_info_string, 
         PoolKey { 
           id: object::new(ctx), 
           key: 0,
@@ -131,7 +134,7 @@ module ipx::ipx {
           last_reward_epoch: START_EPOCH,
           accrued_ipx_per_share: 0,
           balance_value: 0
-        }
+          }
       );
 
       // Transform the treasury_cap into a supply struct to allow this contract to mint/burn IPX
@@ -522,7 +525,7 @@ fun borrow_pool<T>(storage: &IPXStorage): &Pool {
 * @return the key of T Pool
 */
  fun get_pool_key<T>(storage: &IPXStorage): u64 {
-    table::borrow<vector<u8>, PoolKey>(&storage.pool_keys, get_coin_info<T>()).key
+    table::borrow<String, PoolKey>(&storage.pool_keys, get_coin_info_string<T>()).key
  }
 
 /**
@@ -591,8 +594,10 @@ fun borrow_mut_account<T>(accounts_storage: &mut AccountStorage, key: u64, sende
   // Update all pools if true
   if (update) update_all_pools(storage, ctx);
 
+  let coin_info_string = get_coin_info_string<T>();
+
   // Make sure Coin<T> has never been registered
-  assert!(!table::contains(&storage.pool_keys, get_coin_info<T>()), ERROR_POOL_ADDED_ALREADY);
+  assert!(!table::contains(&storage.pool_keys, coin_info_string), ERROR_POOL_ADDED_ALREADY);
 
   // Update the total allocation points
   storage.total_allocation_points = total_allocation_points + allocation_points;
@@ -613,7 +618,7 @@ fun borrow_mut_account<T>(accounts_storage: &mut AccountStorage, key: u64, sende
   // Register the PoolKey
   table::add(
     &mut storage.pool_keys,
-    get_coin_info<T>(),
+    coin_info_string,
     PoolKey {
       id: object::new(ctx),
       key
