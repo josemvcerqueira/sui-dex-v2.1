@@ -16,7 +16,7 @@ module ipx::ipx {
 
   struct IPX has drop {}
 
-  const START_EPOCH: u64 = 4; // TODO needs to be updated based on real time before mainnet
+  const START_EPOCH: u64 = 0; // TODO needs to be updated based on real time before mainnet
   const IPX_PER_EPOCH: u64 = 100000000000; // 100e9 IPX | 100 IPX per epoch
   const IPX_PRE_MINT_AMOUNT: u64 = 600000000000000000; // 600M 60% of the supply
   const DEV: address = @dev;
@@ -514,7 +514,7 @@ module ipx::ipx {
 * @param storage The IPXStorage shared object
 * @return immutable T Pool
 */
-fun borrow_pool<T>(storage: &IPXStorage): &Pool {
+public fun borrow_pool<T>(storage: &IPXStorage): &Pool {
   let key = get_pool_key<T>(storage);
   table::borrow(&storage.pools, key)
  }
@@ -535,7 +535,7 @@ fun borrow_pool<T>(storage: &IPXStorage): &Pool {
 * @param sender The address of the account we wish to find
 * @return immutable AccountStruct of sender for T Pool
 */ 
- fun borrow_account<T>(storage: &IPXStorage, accounts_storage: &AccountStorage, sender: address): &Account<T> {
+ public fun borrow_account<T>(storage: &IPXStorage, accounts_storage: &AccountStorage, sender: address): &Account<T> {
   bag::borrow(table::borrow(&accounts_storage.accounts, get_pool_key<T>(storage)), sender)
  }
 
