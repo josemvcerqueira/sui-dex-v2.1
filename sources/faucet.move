@@ -9,12 +9,15 @@ module ipx::faucet {
     use sui::transfer;
     use sui::tx_context::{Self, TxContext};
     use sui::sui::{SUI};
+    use sui::pay;
 
     use ipx::coins::{Self,get_coins};
     use ipx::dex_volatile::{create_pool, Storage, VLPCoin};
-    use ipx::ipx::{Self, IPXStorage, AccountStorage, IPXAdmin};
+    use ipx::ipx::{Self, IPXStorage, AccountStorage, IPXAdmin, IPX};
     use ipx::utils::{are_coins_sorted};
 
+
+    const IPX_INITIAL_AMOUNT: u64 = 10000000000000; // 1000
     const ERROR_COIN_DOES_NOT_EXIST: u64 = 1;
 
 
@@ -69,8 +72,19 @@ module ipx::faucet {
         )
     } 
 
-    public entry fun start_liquidity(storage: &mut Storage ,faucet: &mut Faucet, sui: Coin<SUI>, ctx: &mut TxContext) {
-      let eth = mint_coins<coins::ETH>(faucet, 10, ctx);
+    public entry fun start_liquidity(storage: &mut Storage ,faucet: &mut Faucet, sui: Coin<SUI>, ipx: Coin<IPX>, ctx: &mut TxContext) {
+      let eth = mint_coins<coins::ETH>(faucet, 50, ctx);
+      let ipx_coin_value = coin::value(&ipx);
+
+      if (ipx_coin_value > IPX_INITIAL_AMOUNT) pay::split_and_transfer(&mut ipx, ipx_coin_value - IPX_INITIAL_AMOUNT, tx_context::sender(ctx), ctx);
+
+      if (are_coins_sorted<coins::ETH, IPX>()) {
+          transfer::transfer(create_pool(storage, eth, ipx, ctx), tx_context::sender(ctx));
+      } else {
+          transfer::transfer(create_pool(storage, ipx, eth, ctx), tx_context::sender(ctx));
+      };
+
+       let eth = mint_coins<coins::ETH>(faucet, 10, ctx);
 
 
       if (are_coins_sorted<coins::ETH, SUI>()) {
@@ -141,6 +155,11 @@ module ipx::faucet {
         ipx::add_pool<VLPCoin<SUI, coins::ETH>>(admin_cap, storage, account_storage, 800, false, ctx);
       };
 
+      if (are_coins_sorted<coins::ETH, IPX>()) {
+        ipx::add_pool<VLPCoin<coins::ETH, IPX>>(admin_cap, storage, account_storage, 1000, false, ctx);
+      } else {
+        ipx::add_pool<VLPCoin<IPX, coins::ETH>>(admin_cap, storage, account_storage, 1000, false, ctx);
+      };
 
       if (are_coins_sorted<coins::BTC, coins::ETH>()) {
         ipx::add_pool<VLPCoin<coins::BTC, coins::ETH>>(admin_cap, storage, account_storage, 500, false, ctx);

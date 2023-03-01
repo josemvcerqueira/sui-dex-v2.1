@@ -1,6 +1,7 @@
 module ipx::ipx {
   use std::option;
   use std::ascii::{String};
+  use std::vector;
 
   use sui::object::{Self, UID};
   use sui::tx_context::{Self, TxContext};
@@ -95,6 +96,19 @@ module ipx::ipx {
     admin: address
   }
 
+  // View structs
+  struct FarmView has drop, copy {
+    allocation_points: u64,
+    last_reward_epoch: u64,
+    accrued_ipx_per_share: u256,
+    balance_value: u64,
+    balance: u64,
+    rewards_paid: u256
+  }
+
+  // Any Value because we do not use
+  struct Value {}
+
   fun init(witness: IPX, ctx: &mut TxContext) {
       // Create the IPX governance token with 9 decimals
       let (treasury, metadata) = coin::create_currency<IPX>(
@@ -103,7 +117,8 @@ module ipx::ipx {
             b"IPX",
             b"Interest Protocol Token",
             b"The governance token of Interest Protocol",
-            option::some(url::new_unsafe_from_bytes(b"https://www.interestprotocol.com")),
+            // TODO host on image on arweave
+            option::some(url::new_unsafe_from_bytes(b"https://dev.interestprotocol.com/logo-blue.jpg")),
             ctx
         );
 
@@ -123,6 +138,13 @@ module ipx::ipx {
           key: 0,
           }
         );
+
+      // Register the Account Bag
+      table::add(
+        &mut accounts,
+         0,
+        bag::new(ctx)
+      );
 
       // Register the IPX farm on pools
       table::add(
@@ -242,11 +264,12 @@ module ipx::ipx {
   update_pool<T>(storage, ctx);
   // Save the sender in memory
   let sender = tx_context::sender(ctx);
+  let key = get_pool_key<T>(storage);
 
    // Register the sender if it is his first time depositing in this pool 
-  if (!bag::contains<address>(table::borrow(&accounts_storage.accounts, get_pool_key<T>(storage)), sender)) {
+  if (!bag::contains<address>(table::borrow(&accounts_storage.accounts, key), sender)) {
     bag::add(
-      table::borrow_mut(&mut accounts_storage.accounts, get_pool_key<T>(storage)),
+      table::borrow_mut(&mut accounts_storage.accounts, key),
       sender,
       Account<T> {
         id: object::new(ctx),
@@ -257,7 +280,6 @@ module ipx::ipx {
   };
 
   // Get the needed info to fetch the sender account and the pool
-  let key = get_pool_key<T>(storage);
   let pool = borrow_mut_pool<T>(storage);
   let account = borrow_mut_account<T>(accounts_storage, key, sender);
 
@@ -757,6 +779,62 @@ fun borrow_mut_account<T>(accounts_storage: &mut AccountStorage, key: u64, sende
       storage.total_allocation_points,
       storage.start_epoch
     )
+  }
+
+  /**
+  * @notice It is a function for the frontend to get all information about the farms and accounts
+  * @param storage The shared IPXStorage object
+  * @param accounts_storage The shared AccountStorage object
+  * @param keys A vector with the keys of the farms we wish to fetch
+  * @param account The address of the user
+  */
+  public fun get_farms(
+    storage: &IPXStorage,
+    accounts_storage: &AccountStorage,
+    keys: &mut vector<u64>,
+    account: address
+  ): vector<FarmView> {
+    let farm_vector = vector::empty<FarmView>();
+    let length = vector::length(keys);
+    let index = 0;
+
+    while (index < length) {
+      let key = vector::pop_back(keys);
+      let farm = table::borrow(&storage.pools, key);
+      let farm_accounts = table::borrow(&accounts_storage.accounts, key);
+
+      if (bag::contains(farm_accounts, account)) {
+      let account = bag::borrow<address, Account<Value>>(farm_accounts, account);
+
+      vector::push_back(
+        &mut farm_vector,
+        FarmView {
+          allocation_points: farm.allocation_points,
+          last_reward_epoch: farm.last_reward_epoch,
+          accrued_ipx_per_share: farm.accrued_ipx_per_share,
+          balance_value: farm.balance_value,
+          balance: balance::value(&account.balance),
+          rewards_paid: account.rewards_paid
+        }
+       );
+      } else {
+        vector::push_back(
+          &mut farm_vector,
+          FarmView {
+            allocation_points: farm.allocation_points,
+            last_reward_epoch: farm.last_reward_epoch,
+            accrued_ipx_per_share: farm.accrued_ipx_per_share,
+            balance_value: farm.balance_value,
+            balance: 0,
+            rewards_paid: 0
+          }
+       );
+      };
+
+      index = index + 1;
+    };
+
+    farm_vector
   }
   
   #[test_only]

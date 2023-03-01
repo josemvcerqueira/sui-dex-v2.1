@@ -1,5 +1,6 @@
 #[test_only]
 module ipx::ipx_tests {
+  use std::vector;
 
   use sui::test_scenario::{Self as test, Scenario, next_tx, ctx, next_epoch};
   use sui::coin::{Self, mint_for_testing as mint, destroy_for_testing as burn, CoinMetadata};
@@ -390,6 +391,39 @@ module ipx::ipx_tests {
   fun test_update_pools() {
     let scenario = scenario();
     test_update_pools_(&mut scenario);
+    test::end(scenario);
+  }
+
+  fun test_get_farms_(test: &mut Scenario) {
+     let (alice, _) = people();
+     
+     // Register first token
+     register_token(test);
+     
+     // Register second token
+     next_tx(test, alice);
+     {
+      let ipx_storage = test::take_shared<IPXStorage>(test);
+      let account_storage = test::take_shared<AccountStorage>(test);
+
+      let keys = vector::empty<u64>();
+
+      vector::push_back(&mut keys, 0);
+      vector::push_back(&mut keys, 1);
+
+     let result = ipx::get_farms(&ipx_storage, &account_storage, &mut keys, alice);
+
+      assert!(vector::length(&result) == 2, 0);
+
+      test::return_shared(ipx_storage);
+      test::return_shared(account_storage);
+     };
+  }
+
+  #[test]
+  fun test_get_farms() {
+    let scenario = scenario();
+    test_get_farms_(&mut scenario);
     test::end(scenario);
   }
 
