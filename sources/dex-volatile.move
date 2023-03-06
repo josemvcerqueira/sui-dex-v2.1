@@ -1,5 +1,4 @@
 module ipx::dex_volatile {
-  use std::vector;
   use std::ascii::{String}; 
 
   use sui::tx_context::{Self, TxContext};
@@ -104,16 +103,7 @@ module ipx::dex_volatile {
     }
 
     // Any Value because we do not use
-    struct Value1 {}
-
-    struct Value2 {}
-
-    struct PoolView has drop, copy {
-      k_last: u256,
-      lp_coin_supply: u64,
-      balance_x: u64,
-      balance_y: u64
-    }   
+    struct Value {}
 
     /**
     * @dev It gives the caller the AdminCap object. The AdminCap allows the holder to update the fee_to key. 
@@ -694,27 +684,9 @@ module ipx::dex_volatile {
       transfer::transfer(admin_cap, new_admin);
     }
 
-    public fun get_pools(storage: &Storage, keys: &mut vector<String>): vector<PoolView> {
-      let pool_vector = vector::empty<PoolView>();
-      let length = vector::length(keys);
-      let index = 0;
-
-      while (index < length) {
-        let key = vector::pop_back(keys);
-        let pool = bag::borrow<String, VPool<Value1, Value2>>(&storage.pools, key);
-
-        vector::push_back(
-          &mut pool_vector,
-          PoolView {
-            k_last: pool.k_last,
-            lp_coin_supply: balance::supply_value(&pool.lp_coin_supply),
-            balance_x: balance::value(&pool.balance_x),
-            balance_y: balance::value(&pool.balance_y)
-          }
-        );
-      };
-
-      pool_vector
+    public fun get_pool_info<X, Y>(storage: &Storage): (u64, u64, u64){
+      let pool = borrow_pool<X, Y>(storage);
+      (balance::value(&pool.balance_x), balance::value(&pool.balance_y), balance::supply_value(&pool.lp_coin_supply))
     }
 
     #[test_only]

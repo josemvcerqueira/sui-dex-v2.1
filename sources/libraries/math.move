@@ -1,4 +1,14 @@
 module ipx::math {
+
+ const SCALAR: u256 = 1000000000;
+
+  public fun fmul(x: u256, y: u256): u256 {
+     (x * y ) / SCALAR
+  }
+
+  public fun fdiv(x: u256, y: u256): u256 {
+    (x * SCALAR ) / y
+  }
   
   public fun mul_div(x: u64, y: u64, z: u64): u64 {
     (((x as u256) * (y as u256)) / (z as u256) as u64)

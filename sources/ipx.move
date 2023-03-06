@@ -1,7 +1,6 @@
 module ipx::ipx {
   use std::option;
   use std::ascii::{String};
-  use std::vector;
 
   use sui::object::{Self, UID};
   use sui::tx_context::{Self, TxContext};
@@ -14,6 +13,7 @@ module ipx::ipx {
   use sui::event;
 
   use ipx::utils::{get_coin_info_string};
+  use ipx::math::{fdiv, fmul};
 
   struct IPX has drop {}
 
@@ -21,6 +21,7 @@ module ipx::ipx {
   const IPX_PER_EPOCH: u64 = 100000000000; // 100e9 IPX | 100 IPX per epoch
   const IPX_PRE_MINT_AMOUNT: u64 = 600000000000000000; // 600M 60% of the supply
   const DEV: address = @dev;
+  const IPX_POOL_KEY: u64 = 0;
 
   const ERROR_POOL_ADDED_ALREADY: u64 = 1;
   const ERROR_ACCOUNT_BAG_ADDED_ALREADY: u64 = 2;
@@ -42,7 +43,8 @@ module ipx::ipx {
     allocation_points: u64,
     last_reward_epoch: u64,
     accrued_ipx_per_share: u256,
-    balance_value: u64
+    balance_value: u64,
+    pool_key: u64
   }
 
   struct AccountStorage has key {
@@ -96,16 +98,6 @@ module ipx::ipx {
     admin: address
   }
 
-  // View structs
-  struct FarmView has drop, copy {
-    allocation_points: u64,
-    last_reward_epoch: u64,
-    accrued_ipx_per_share: u256,
-    balance_value: u64,
-    balance: u64,
-    rewards_paid: u256
-  }
-
   // Any Value because we do not use
   struct Value {}
 
@@ -155,7 +147,8 @@ module ipx::ipx {
           allocation_points: 1000,
           last_reward_epoch: START_EPOCH,
           accrued_ipx_per_share: 0,
-          balance_value: 0
+          balance_value: 0,
+          pool_key: 0
           }
       );
 
@@ -233,6 +226,8 @@ module ipx::ipx {
     // save the accrued ipx per share in memory
     let accrued_ipx_per_share = pool.accrued_ipx_per_share;
 
+    let is_ipx = pool.pool_key == IPX_POOL_KEY;
+
     // If the pool is not up to date, we need to increase the accrued_ipx_per_share
     if (current_epoch > pool.last_reward_epoch) {
       // Calculate how many epochs have passed since the last update
@@ -240,11 +235,18 @@ module ipx::ipx {
       // Calculate the total rewards for this pool
       let rewards = (epochs_delta * (storage.ipx_per_epoch as u256)) * (pool.allocation_points as u256) / (storage.total_allocation_points as u256);
       // Update the accrued_ipx_per_share
-      accrued_ipx_per_share = accrued_ipx_per_share + (rewards / (pool.balance_value as u256));
+      accrued_ipx_per_share = accrued_ipx_per_share + if (is_ipx) {
+        fdiv(rewards, (pool.balance_value as u256))
+          } else {
+          (rewards / (pool.balance_value as u256))
+          };
     };
-
     // Calculate the rewards for the user
-    return (account_balance_value * accrued_ipx_per_share) - account.rewards_paid
+    return if (is_ipx) {
+      fmul(account_balance_value, accrued_ipx_per_share) - account.rewards_paid
+    } else {
+      (account_balance_value * accrued_ipx_per_share) - account.rewards_paid
+    } 
   }
 
 /**
@@ -282,6 +284,7 @@ module ipx::ipx {
   // Get the needed info to fetch the sender account and the pool
   let pool = borrow_mut_pool<T>(storage);
   let account = borrow_mut_account<T>(accounts_storage, key, sender);
+  let is_ipx = pool.pool_key == IPX_POOL_KEY;
 
   // Initiate the pending rewards to 0
   let pending_rewards = 0;
@@ -290,7 +293,11 @@ module ipx::ipx {
   let account_balance_value = (balance::value(&account.balance) as u256);
 
   // If he has deposited tokens, he has earned Coin<IPX>; therefore, we update the pending rewards based on the current balance
-  if (account_balance_value > 0) pending_rewards = (account_balance_value * pool.accrued_ipx_per_share) - account.rewards_paid;
+  if (account_balance_value > 0) pending_rewards = if (is_ipx) {
+    fmul(account_balance_value, pool.accrued_ipx_per_share)
+  } else {
+    (account_balance_value * pool.accrued_ipx_per_share)
+  } - account.rewards_paid;
 
   // Save in memory how mnay coins the sender wishes to deposit
   let token_value = coin::value(&token);
@@ -300,7 +307,11 @@ module ipx::ipx {
   // Update the Balance<T> on the sender account
   balance::join(&mut account.balance, coin::into_balance(token));
   // Consider all his rewards paid
-  account.rewards_paid = (balance::value(&account.balance) as u256) * pool.accrued_ipx_per_share;
+  account.rewards_paid = if (is_ipx) {
+    fmul((balance::value(&account.balance) as u256), pool.accrued_ipx_per_share)
+  } else {
+    (balance::value(&account.balance) as u256) * pool.accrued_ipx_per_share
+  };
 
   event::emit(
     Stake<T> {
@@ -335,7 +346,8 @@ module ipx::ipx {
   let key = get_pool_key<T>(storage);
   let pool = borrow_mut_pool<T>(storage);
   let account = borrow_mut_account<T>(accounts_storage, key, tx_context::sender(ctx));
-  
+  let is_ipx = pool.pool_key == IPX_POOL_KEY;
+
   // Save the account balance value in memory
   let account_balance_value = balance::value(&account.balance);
 
@@ -343,7 +355,11 @@ module ipx::ipx {
   assert!(account_balance_value >= coin_value, ERROR_NOT_ENOUGH_BALANCE);
 
   // Calculate how many rewards the caller is entitled to
-  let pending_rewards = ((account_balance_value as u256) * pool.accrued_ipx_per_share) - account.rewards_paid;
+  let pending_rewards = if (is_ipx) {
+    fmul((account_balance_value as u256), pool.accrued_ipx_per_share)
+  } else {
+    ((account_balance_value as u256) * pool.accrued_ipx_per_share)
+  } - account.rewards_paid;
 
   // Withdraw the Coin<T> from the Account
   let staked_coin = coin::take(&mut account.balance, coin_value, ctx);
@@ -351,7 +367,11 @@ module ipx::ipx {
   // Reduce the balance value in the pool
   pool.balance_value = pool.balance_value - coin_value;
   // Consider all pending rewards paid
-  account.rewards_paid = (balance::value(&account.balance) as u256) * pool.accrued_ipx_per_share;
+  account.rewards_paid = if (is_ipx) {
+    fmul((balance::value(&account.balance) as u256), pool.accrued_ipx_per_share)
+  } else {
+    (balance::value(&account.balance) as u256) * pool.accrued_ipx_per_share
+  };
 
   event::emit(
     Unstake<T> {
@@ -387,18 +407,27 @@ module ipx::ipx {
   let key = get_pool_key<T>(storage);
   let pool = borrow_pool<T>(storage);
   let account = borrow_mut_account<T>(accounts_storage, key, tx_context::sender(ctx));
-  
+  let is_ipx = pool.pool_key == IPX_POOL_KEY;
+
   // Save the user balance value in memory
   let account_balance_value = (balance::value(&account.balance) as u256);
 
-  // Calculate his pending rewards
-  let pending_rewards = (account_balance_value * pool.accrued_ipx_per_share) - account.rewards_paid;
+  // Calculate how many rewards the caller is entitled to
+  let pending_rewards = if (is_ipx) {
+    fmul((account_balance_value as u256), pool.accrued_ipx_per_share)
+  } else {
+    ((account_balance_value as u256) * pool.accrued_ipx_per_share)
+  } - account.rewards_paid;
 
   // No point to keep going if there are no rewards
   assert!(pending_rewards != 0, ERROR_NO_PENDING_REWARDS);
   
-  // Consider all rewards paid
-  account.rewards_paid = account_balance_value * pool.accrued_ipx_per_share;
+  // Consider all pending rewards paid
+  account.rewards_paid = if (is_ipx) {
+    fmul((balance::value(&account.balance) as u256), pool.accrued_ipx_per_share)
+  } else {
+    (balance::value(&account.balance) as u256) * pool.accrued_ipx_per_share
+  };
 
   // Mint Coin<IPX> rewards to the caller
   coin::from_balance(balance::increase_supply(&mut storage.supply, (pending_rewards as u64)), ctx)
@@ -447,7 +476,13 @@ module ipx::ipx {
   let pool = borrow_mut_pool<T>(storage);
 
   // Update the pool
-  update_pool_internal(pool, ipx_per_epoch, total_allocation_points, start_epoch, ctx);
+  update_pool_internal(
+    pool, 
+    ipx_per_epoch, 
+    total_allocation_points, 
+    start_epoch, 
+    ctx
+  );
  }
 
  /**
@@ -492,7 +527,11 @@ module ipx::ipx {
   let rewards = ((pool.allocation_points as u256) * (epochs_delta as u256) * (ipx_per_epoch as u256) / (total_allocation_points as u256));
 
   // Update the accrued_ipx_per_share
-  pool.accrued_ipx_per_share = pool.accrued_ipx_per_share + (rewards / (pool.balance_value as u256));
+  pool.accrued_ipx_per_share = pool.accrued_ipx_per_share + if (pool.pool_key == IPX_POOL_KEY) {
+    fdiv(rewards, (pool.balance_value as u256))
+  } else {
+    (rewards / (pool.balance_value as u256))
+  };
  }
 
  /**
@@ -559,6 +598,17 @@ public fun borrow_pool<T>(storage: &IPXStorage): &Pool {
 */ 
  public fun borrow_account<T>(storage: &IPXStorage, accounts_storage: &AccountStorage, sender: address): &Account<T> {
   bag::borrow(table::borrow(&accounts_storage.accounts, get_pool_key<T>(storage)), sender)
+ }
+
+/**
+* @dev Finds an Account struct for T Pool
+* @param storage The IPXStorage shared object
+* @param accounts_storage The AccountStorage shared object
+* @param sender The address of the account we wish to find
+* @return immutable AccountStruct of sender for T Pool
+*/ 
+ public fun account_exists<T>(storage: &IPXStorage, accounts_storage: &AccountStorage, sender: address): bool {
+  bag::contains(table::borrow(&accounts_storage.accounts, get_pool_key<T>(storage)), sender)
  }
 
 /**
@@ -659,7 +709,8 @@ fun borrow_mut_account<T>(accounts_storage: &mut AccountStorage, key: u64, sende
       allocation_points,
       last_reward_epoch: if (current_epoch > start_epoch) { current_epoch } else { start_epoch },
       accrued_ipx_per_share: 0,
-      balance_value: 0
+      balance_value: 0,
+      pool_key: key
     }
   );
 
@@ -779,62 +830,6 @@ fun borrow_mut_account<T>(accounts_storage: &mut AccountStorage, key: u64, sende
       storage.total_allocation_points,
       storage.start_epoch
     )
-  }
-
-  /**
-  * @notice It is a function for the frontend to get all information about the farms and accounts
-  * @param storage The shared IPXStorage object
-  * @param accounts_storage The shared AccountStorage object
-  * @param keys A vector with the keys of the farms we wish to fetch
-  * @param account The address of the user
-  */
-  public fun get_farms(
-    storage: &IPXStorage,
-    accounts_storage: &AccountStorage,
-    keys: &mut vector<u64>,
-    account: address
-  ): vector<FarmView> {
-    let farm_vector = vector::empty<FarmView>();
-    let length = vector::length(keys);
-    let index = 0;
-
-    while (index < length) {
-      let key = vector::pop_back(keys);
-      let farm = table::borrow(&storage.pools, key);
-      let farm_accounts = table::borrow(&accounts_storage.accounts, key);
-
-      if (bag::contains(farm_accounts, account)) {
-      let account = bag::borrow<address, Account<Value>>(farm_accounts, account);
-
-      vector::push_back(
-        &mut farm_vector,
-        FarmView {
-          allocation_points: farm.allocation_points,
-          last_reward_epoch: farm.last_reward_epoch,
-          accrued_ipx_per_share: farm.accrued_ipx_per_share,
-          balance_value: farm.balance_value,
-          balance: balance::value(&account.balance),
-          rewards_paid: account.rewards_paid
-        }
-       );
-      } else {
-        vector::push_back(
-          &mut farm_vector,
-          FarmView {
-            allocation_points: farm.allocation_points,
-            last_reward_epoch: farm.last_reward_epoch,
-            accrued_ipx_per_share: farm.accrued_ipx_per_share,
-            balance_value: farm.balance_value,
-            balance: 0,
-            rewards_paid: 0
-          }
-       );
-      };
-
-      index = index + 1;
-    };
-
-    farm_vector
   }
   
   #[test_only]

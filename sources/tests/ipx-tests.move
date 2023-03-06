@@ -1,19 +1,79 @@
 #[test_only]
 module ipx::ipx_tests {
-  use std::vector;
 
   use sui::test_scenario::{Self as test, Scenario, next_tx, ctx, next_epoch};
   use sui::coin::{Self, mint_for_testing as mint, destroy_for_testing as burn, CoinMetadata};
   use sui::tx_context;
 
   use ipx::ipx::{Self, IPXStorage, AccountStorage, IPXAdmin, IPX};
+  use ipx::math::{fmul};
   use ipx::test_utils::{people, scenario};
   
-  const START_EPOCH: u64 = 4;
+  const START_EPOCH: u64 = 0;
   const LPCOIN_ALLOCATION_POINTS: u64 = 500;
 
   struct LPCoin {}
   struct LPCoin2 {}
+
+    fun test_stake_ipx_(test: &mut Scenario) {
+    let (alice, _) = people();
+
+    let first_stake_amount = 5000000000000;
+    let second_stake_amount = 2000000000000;
+
+    next_tx(test, alice);
+    {
+      ipx::init_for_testing(ctx(test));
+    };
+
+    next_tx(test, alice);
+    {
+      let ipx_storage = test::take_shared<IPXStorage>(test);
+      let account_storage = test::take_shared<AccountStorage>(test);
+
+      let coin_ipx = ipx::stake(&mut ipx_storage, &mut account_storage, mint<IPX>(first_stake_amount, ctx(test)), ctx(test));
+
+      let (_, _, _, balance) = ipx::get_pool_info<IPX>(&ipx_storage);
+      let (user_balance, rewards_paid) = ipx::get_account_info<IPX>(&ipx_storage, &account_storage, alice);
+
+      assert!(burn(coin_ipx) == 0, 0);
+      assert!(balance == first_stake_amount, 0);
+      assert!(user_balance == first_stake_amount, 0);
+      assert!(rewards_paid == 0, 0);
+
+      test::return_shared(ipx_storage);
+      test::return_shared(account_storage);
+    };
+
+    advance_epoch(test, alice, 7);
+    next_tx(test, alice);
+    {
+      let ipx_storage = test::take_shared<IPXStorage>(test);
+      let account_storage = test::take_shared<AccountStorage>(test);
+
+      let coin_ipx = ipx::stake(&mut ipx_storage, &mut account_storage, mint<IPX>(second_stake_amount, ctx(test)), ctx(test));
+
+      let (_, last_reward_epoch, accrued_ipx_per_share, balance) = ipx::get_pool_info<IPX>(&ipx_storage);
+      let (user_balance, rewards_paid) = ipx::get_account_info<IPX>(&ipx_storage, &account_storage, alice);
+
+      assert!((burn(coin_ipx) as u256) == fmul((first_stake_amount as u256), accrued_ipx_per_share), 0);
+      assert!(balance == first_stake_amount + second_stake_amount, 0);
+      assert!(user_balance == first_stake_amount + second_stake_amount, 0);
+      assert!(rewards_paid == fmul(((first_stake_amount + second_stake_amount) as u256), accrued_ipx_per_share), 0);
+      assert!(last_reward_epoch == 7, 0);
+
+      test::return_shared(ipx_storage);
+      test::return_shared(account_storage);
+    };
+  }
+
+
+  #[test]
+  fun test_stake_ipx() {
+    let scenario = scenario();
+    test_stake_ipx_(&mut scenario);
+    test::end(scenario);
+  }
 
   fun test_stake_(test: &mut Scenario) {
     let (alice, _) = people();
@@ -169,7 +229,7 @@ module ipx::ipx_tests {
       assert!(supply == ipx::get_ipx_pre_mint_amount(), 0);
       assert!(ipx_per_epoch == 100000000000, 0);
       assert!(total_allocation_points == 1000, 0);
-      assert!(start_epoch == 4, 0);
+      assert!(start_epoch == 0, 0);
       assert!(allocation_points == 1000, 0);
       assert!(last_reward_epoch == START_EPOCH, 0);
       assert!(accrued_ipx_per_share == 0, 0);
@@ -380,8 +440,8 @@ module ipx::ipx_tests {
 
       assert!(lp_coin_last_reward_epoch == 10, 0);
       assert!(lp_coin_2_last_reward_epoch == 10, 0);
-      assert!(lp_coin_accrued_ipx_per_share == (((lp_coin_pool_allocation * (10 - 4) * ipx_per_epoch  / total_allocation_points) / 500) as u256), 0);
-      assert!(lp_coin_2_accrued_ipx_per_share == (((lp_coin_2_pool_allocation * (10 - 4) * ipx_per_epoch  / total_allocation_points) / 1000) as u256), 0);
+      assert!(lp_coin_accrued_ipx_per_share == (((lp_coin_pool_allocation * 10 * ipx_per_epoch  / total_allocation_points) / 500) as u256), 0);
+      assert!(lp_coin_2_accrued_ipx_per_share == (((lp_coin_2_pool_allocation * 10 * ipx_per_epoch  / total_allocation_points) / 1000) as u256), 0);
 
       test::return_shared(ipx_storage);
     }
@@ -391,39 +451,6 @@ module ipx::ipx_tests {
   fun test_update_pools() {
     let scenario = scenario();
     test_update_pools_(&mut scenario);
-    test::end(scenario);
-  }
-
-  fun test_get_farms_(test: &mut Scenario) {
-     let (alice, _) = people();
-     
-     // Register first token
-     register_token(test);
-     
-     // Register second token
-     next_tx(test, alice);
-     {
-      let ipx_storage = test::take_shared<IPXStorage>(test);
-      let account_storage = test::take_shared<AccountStorage>(test);
-
-      let keys = vector::empty<u64>();
-
-      vector::push_back(&mut keys, 0);
-      vector::push_back(&mut keys, 1);
-
-     let result = ipx::get_farms(&ipx_storage, &account_storage, &mut keys, alice);
-
-      assert!(vector::length(&result) == 2, 0);
-
-      test::return_shared(ipx_storage);
-      test::return_shared(account_storage);
-     };
-  }
-
-  #[test]
-  fun test_get_farms() {
-    let scenario = scenario();
-    test_get_farms_(&mut scenario);
     test::end(scenario);
   }
 

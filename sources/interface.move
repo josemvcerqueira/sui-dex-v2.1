@@ -1,4 +1,5 @@
 module ipx::interface {
+  use std::vector;
 
   use sui::coin::{Coin};
   use sui::tx_context::{Self, TxContext};
@@ -436,5 +437,130 @@ module ipx::interface {
     // Create a coin from the vector. It keeps the desired amound and sends any extra coins to the caller
     // vector total value - coin desired value
     ipx::burn_ipx(storage, handle_coin_vector(coin_vector, coin_value, ctx));
+  }
+
+  fun get_farm<X>(
+    storage: &IPXStorage,
+    accounts_storage: &AccountStorage,
+    account: address,
+    farm_vector: &mut vector<vector<u64>>
+  ) {
+     let inner_vector = vector::empty<u64>();
+    let (allocation, _, _, pool_balance) = ipx::get_pool_info<X>(storage);
+
+    vector::push_back(&mut inner_vector, allocation);
+    vector::push_back(&mut inner_vector, pool_balance);
+
+    if (ipx::account_exists<X>(storage, accounts_storage, account)) {
+      let (account_balance, _) = ipx::get_account_info<X>(storage, accounts_storage, account);
+      vector::push_back(&mut inner_vector, account_balance);
+    } else {
+      vector::push_back(&mut inner_vector, 0);
+    };
+
+    vector::push_back(farm_vector, inner_vector);
+  }
+
+  public fun get_farms<A, B, C, D, E, F, G, H, I, J>(
+    storage: &IPXStorage,
+    accounts_storage: &AccountStorage,
+    account: address,
+    num_of_farms: u64
+  ): vector<vector<u64>> {
+    let farm_vector = vector::empty<vector<u64>>(); 
+
+    get_farm<A>(storage, accounts_storage, account, &mut farm_vector);
+
+    if (num_of_farms == 1) return farm_vector;
+
+    get_farm<B>(storage, accounts_storage, account, &mut farm_vector);
+
+    if (num_of_farms == 2) return farm_vector;
+
+    get_farm<C>(storage, accounts_storage, account, &mut farm_vector);
+
+    if (num_of_farms == 3) return farm_vector;
+
+    get_farm<D>(storage, accounts_storage, account, &mut farm_vector);
+
+    if (num_of_farms == 4) return farm_vector;
+
+    get_farm<E>(storage, accounts_storage, account, &mut farm_vector);
+
+    if (num_of_farms == 5) return farm_vector;
+
+    get_farm<F>(storage, accounts_storage, account, &mut farm_vector);
+
+    if (num_of_farms == 6) return farm_vector;
+
+    get_farm<G>(storage, accounts_storage, account, &mut farm_vector);
+
+    if (num_of_farms == 7) return farm_vector;
+
+    get_farm<H>(storage, accounts_storage, account, &mut farm_vector);
+
+    if (num_of_farms == 8) return farm_vector;
+
+    get_farm<I>(storage, accounts_storage, account, &mut farm_vector);
+
+    if (num_of_farms == 9) return farm_vector;
+
+    get_farm<J>(storage, accounts_storage, account, &mut farm_vector);
+
+    farm_vector
+  }
+
+  fun get_v_pool<X, Y>(storage: &VStorage, pool_vector: &mut vector<vector<u64>>) {
+      let inner_vector = vector::empty<u64>();
+    let (balance_x, balance_y, supply) = volatile::get_pool_info<X, Y>(storage);
+
+    vector::push_back(&mut inner_vector, balance_x);
+    vector::push_back(&mut inner_vector, balance_y);
+    vector::push_back(&mut inner_vector, supply);
+    vector::push_back(pool_vector, inner_vector);
+  }
+
+  public fun get_v_pools<A1, A2, B1, B2, C1, C2, D1, D2, E1, E2, F1, F2, G1, G2, H1, H2, I1, I2, J1, J2>(storage: &VStorage, num_of_pools: u64): vector<vector<u64>> {
+    let pool_vector = vector::empty<vector<u64>>(); 
+
+    get_v_pool<A1, A2>(storage, &mut pool_vector);
+
+    if (num_of_pools == 1) return pool_vector;
+
+    get_v_pool<B1, B2>(storage, &mut pool_vector);
+
+    if (num_of_pools == 2) return pool_vector;
+
+    get_v_pool<C1, C2>(storage, &mut pool_vector);
+
+    if (num_of_pools == 3) return pool_vector;
+
+    get_v_pool<D1, D2>(storage, &mut pool_vector);
+
+    if (num_of_pools == 4) return pool_vector;
+
+    get_v_pool<E1, E2>(storage, &mut pool_vector);
+
+    if (num_of_pools == 5) return pool_vector;
+
+    get_v_pool<F1, F2>(storage, &mut pool_vector);
+
+    if (num_of_pools == 6) return pool_vector;
+
+    get_v_pool<G1, G2>(storage, &mut pool_vector);
+
+    if (num_of_pools == 7) return pool_vector;
+
+    get_v_pool<H1, H2>(storage, &mut pool_vector);
+
+    if (num_of_pools == 8) return pool_vector;
+
+    get_v_pool<I1, I2>(storage, &mut pool_vector);
+
+    if (num_of_pools == 9) return pool_vector;
+
+    get_v_pool<J1, J2>(storage, &mut pool_vector);
+
+    pool_vector
   }
 }
