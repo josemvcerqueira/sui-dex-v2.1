@@ -439,6 +439,15 @@ module ipx::interface {
     ipx::burn_ipx(storage, handle_coin_vector(coin_vector, coin_value, ctx));
   }
 
+
+  public fun is_v_pool_deployed<X, Y>(storage: &VStorage): bool {
+    if (are_coins_sorted<X, Y>()) {
+      volatile::is_pool_deployed<X, Y>(storage)
+    } else {
+      volatile::is_pool_deployed<Y, X>(storage)
+    }
+  }
+
   fun get_farm<X>(
     storage: &IPXStorage,
     accounts_storage: &AccountStorage,
