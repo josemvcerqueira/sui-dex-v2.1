@@ -8,5 +8,5 @@ Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-fram
 [addresses]
 ipx =  "0x0"
 sui =  "0000000000000000000000000000000000000002"
-dev = "0xa09888cbd5b3329f86cf945bb3872a31ae835c47"
+dev = "0xe47d479fe44ee6af3f8e58203a4e4704068ab597"
 zero = "0x0"

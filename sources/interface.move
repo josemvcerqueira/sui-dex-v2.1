@@ -4,6 +4,7 @@ module ipx::interface {
   use sui::coin::{Coin};
   use sui::tx_context::{Self, TxContext};
   use sui::transfer;
+  use sui::object::{ID};
 
   use ipx::dex_volatile::{Self as volatile, Storage as VStorage, VLPCoin};
   use ipx::dex_stable::{Self as stable, Storage as SStorage, SLPCoin};
@@ -440,11 +441,19 @@ module ipx::interface {
   }
 
 
-  public fun is_v_pool_deployed<X, Y>(storage: &VStorage): bool {
+  public fun get_v_pool_id<X, Y>(storage: &VStorage): ID {
     if (are_coins_sorted<X, Y>()) {
-      volatile::is_pool_deployed<X, Y>(storage)
+      volatile::get_pool_id<X, Y>(storage)
     } else {
-      volatile::is_pool_deployed<Y, X>(storage)
+      volatile::get_pool_id<Y, X>(storage)
+    }
+  }
+
+  public fun get_s_pool_id<X, Y>(storage: &SStorage): ID {
+    if (are_coins_sorted<X, Y>()) {
+      stable::get_pool_id<X, Y>(storage)
+    } else {
+      stable::get_pool_id<Y, X>(storage)
     }
   }
 

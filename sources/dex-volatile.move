@@ -373,6 +373,18 @@ module ipx::dex_volatile {
     }
 
     /**
+    * @dev It indicates to the caller if Pool<X, Y> has been deployed. 
+    * @param storage the object that stores the pools Bag 
+    * @return pool ID
+    * Requirements: 
+    * - Coins X and Y must be sorted.
+    */
+    public fun get_pool_id<X, Y>(storage: &Storage): ID {
+      let pool = borrow_pool<X, Y>(storage);
+      object::id(pool)
+    }
+
+    /**
     * @param pool an immutable Pool<X, Y>
     * @return It returns a triple of Tuple<coin_x_reserves, coin_y_reserves, lp_coin_supply>. 
     */
