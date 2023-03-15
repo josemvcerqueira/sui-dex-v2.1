@@ -5,10 +5,10 @@ module ipx::dex_stable {
   use sui::tx_context::{Self, TxContext};
   use sui::coin::{Self, Coin};
   use sui::balance::{Self, Supply, Balance};
-  use sui::object::{Self,UID, ID};
+  use sui::object::{Self, UID, ID};
   use sui::transfer;
   use sui::math;
-  use sui::bag::{Self, Bag};
+  use sui::object_bag::{Self, ObjectBag};
   use sui::event;
 
   use ipx::utils;
@@ -45,7 +45,7 @@ module ipx::dex_stable {
 
     struct Storage has key {
       id: UID,
-      pools: Bag,
+      pools: ObjectBag,
       fee_to: address
     }
 
@@ -125,7 +125,7 @@ module ipx::dex_stable {
       transfer::share_object(
          Storage {
            id: object::new(ctx),
-           pools: bag::new(ctx),
+           pools: object_bag::new(ctx),
            fee_to: DEV
          }
       );
@@ -167,7 +167,7 @@ module ipx::dex_stable {
       let type = utils::get_coin_info_string<SLPCoin<X, Y>>();
 
       // Checks that the pool does not exist.
-      assert!(!bag::contains(&storage.pools, type), ERROR_POOL_EXISTS);
+      assert!(!object_bag::contains(&storage.pools, type), ERROR_POOL_EXISTS);
 
       // Calculate the scalar of the decimals.
       let decimals_x = math::pow(10, decimals_x);
@@ -201,7 +201,7 @@ module ipx::dex_stable {
         );
 
       // Store the new pool in Storage.pools
-      bag::add(
+      object_bag::add(
         &mut storage.pools,
         type,
         SPool {
@@ -368,7 +368,7 @@ module ipx::dex_stable {
     * - Coins X and Y must be sorted.
     */
     public fun borrow_pool<X, Y>(storage: &Storage): &SPool<X, Y> {
-      bag::borrow<String, SPool<X, Y>>(&storage.pools, utils::get_coin_info_string<SLPCoin<X, Y>>())
+      object_bag::borrow<String, SPool<X, Y>>(&storage.pools, utils::get_coin_info_string<SLPCoin<X, Y>>())
     }
 
     /**
@@ -379,7 +379,7 @@ module ipx::dex_stable {
     * - Coins X and Y must be sorted.
     */
     public fun is_pool_deployed<X, Y>(storage: &Storage):bool {
-      bag::contains(&storage.pools, utils::get_coin_info_string<SLPCoin<X, Y>>())
+      object_bag::contains(&storage.pools, utils::get_coin_info_string<SLPCoin<X, Y>>())
     }
 
     /**
@@ -652,7 +652,7 @@ module ipx::dex_stable {
     * - Coins X and Y must be sorted.
     */
     fun borrow_mut_pool<X, Y>(storage: &mut Storage): &mut SPool<X, Y> {
-        bag::borrow_mut<String, SPool<X, Y>>(&mut storage.pools, utils::get_coin_info_string<SLPCoin<X, Y>>())
+        object_bag::borrow_mut<String, SPool<X, Y>>(&mut storage.pools, utils::get_coin_info_string<SLPCoin<X, Y>>())
       }   
 
     /**

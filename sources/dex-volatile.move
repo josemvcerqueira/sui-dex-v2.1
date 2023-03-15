@@ -7,7 +7,7 @@ module ipx::dex_volatile {
   use sui::object::{Self,UID, ID};
   use sui::transfer;
   use sui::math;
-  use sui::bag::{Self, Bag};
+  use sui::object_bag::{Self, ObjectBag};
   use sui::event;
 
   use ipx::utils;
@@ -42,7 +42,7 @@ module ipx::dex_volatile {
 
     struct Storage has key {
       id: UID,
-      pools: Bag,
+      pools: ObjectBag,
       fee_to: address
     }
 
@@ -102,8 +102,6 @@ module ipx::dex_volatile {
       shares_destroyed: u64
     }
 
-    // Any Value because we do not use
-    struct Value {}
 
     /**
     * @dev It gives the caller the AdminCap object. The AdminCap allows the holder to update the fee_to key. 
@@ -123,7 +121,7 @@ module ipx::dex_volatile {
       transfer::share_object(
          Storage {
            id: object::new(ctx),
-           pools: bag::new(ctx),
+           pools: object_bag::new(ctx),
            fee_to: DEV
          }
       );
@@ -162,7 +160,7 @@ module ipx::dex_volatile {
       let type = utils::get_coin_info_string<VLPCoin<X, Y>>();
 
       // Checks that the pool does not exist.
-      assert!(!bag::contains(&storage.pools, type), ERROR_POOL_EXISTS);
+      assert!(!object_bag::contains(&storage.pools, type), ERROR_POOL_EXISTS);
 
       // Calculate the constant product k = x * y
       let _k = k(coin_x_value, coin_y_value) - (MINIMUM_LIQUIDITY as u256);
@@ -193,7 +191,7 @@ module ipx::dex_volatile {
         );
 
       // Store the new pool in Storage.pools
-      bag::add(
+      object_bag::add(
         &mut storage.pools,
         type,
         VPool {
@@ -358,7 +356,7 @@ module ipx::dex_volatile {
     * - Coins X and Y must be sorted.
     */
     public fun borrow_pool<X, Y>(storage: &Storage): &VPool<X, Y> {
-      bag::borrow<String, VPool<X, Y>>(&storage.pools, utils::get_coin_info_string<VLPCoin<X, Y>>())
+      object_bag::borrow<String, VPool<X, Y>>(&storage.pools, utils::get_coin_info_string<VLPCoin<X, Y>>())
     }
 
     /**
@@ -369,12 +367,11 @@ module ipx::dex_volatile {
     * - Coins X and Y must be sorted.
     */
     public fun is_pool_deployed<X, Y>(storage: &Storage):bool {
-      bag::contains(&storage.pools, utils::get_coin_info_string<VLPCoin<X, Y>>())
+      object_bag::contains(&storage.pools, utils::get_coin_info_string<VLPCoin<X, Y>>())
     }
 
     /**
-    * @dev It indicates to the caller if Pool<X, Y> has been deployed. 
-    * @param storage the object that stores the pools Bag 
+    * @dev It returns the ID of a pool
     * @return pool ID
     * Requirements: 
     * - Coins X and Y must be sorted.
@@ -623,7 +620,7 @@ module ipx::dex_volatile {
     * - Coins X and Y must be sorted.
     */
     fun borrow_mut_pool<X, Y>(storage: &mut Storage): &mut VPool<X, Y> {
-        bag::borrow_mut<String, VPool<X, Y>>(&mut storage.pools, utils::get_coin_info_string<VLPCoin<X, Y>>())
+        object_bag::borrow_mut<String, VPool<X, Y>>(&mut storage.pools, utils::get_coin_info_string<VLPCoin<X, Y>>())
       }   
 
     /**
